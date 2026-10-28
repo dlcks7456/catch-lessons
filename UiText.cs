@@ -10,7 +10,7 @@ public static class UiText
         ["연결"]="Connection",["언어"]="Languages",["앱 언어"]="App language",["녹음·저장"]="Recording & storage",["요약"]="Summary",["화면"]="Appearance",["단축키"]="Shortcuts",["닫기"]="Close",["확인"]="OK",
         ["녹음마다 새로운 대화를 만들고, 그 안에서 번역과 요약을 이어갑니다. 선택하면 실제 응답으로 연결을 확인합니다."]="Each recording starts a new conversation for translation and summaries. Selecting an agent checks its connection.",
         ["Agent를 선택하면 연결을 확인합니다."]="Select an agent to check its connection.",["Agent 연결 다시 확인"]="Test agent connection",["실제 Agent 응답 확인 중…"]="Checking agent response…",["Agent 연결 확인 중…"]="Checking agent connections…",["Agent 연결 실패"]="Agent connection failed",["연결 확인 취소"]="Connection check canceled",["연결됨"]="connected",
-        ["연결 확인 필요"]="Connection required",["설정에서 해당 Agent의 CLI 경로와 로그인을 확인하세요."]="Open Connection settings and check the agent CLI path and sign in.",["연결 설정"]="Connection settings",
+        ["연결 확인 필요"]="Connection required",["연결 실패"]="connection failed",["설정에서 해당 Agent의 CLI 경로와 로그인을 확인하세요."]="Open Connection settings and check the agent CLI path and sign in.",["연결 설정"]="Connection settings",
         ["모델 · 다음 녹음부터 적용"]="Model · applies to the next recording",["Effort · 낮을수록 속도 우선"]="Effort · lower is faster",["Fast 모드"]="Fast mode",
         ["음성 인식 엔진"]="Speech recognition engine",["로컬 Whisper (무료)"]="Local Whisper (free)",["로컬 음성 모델"]="Local speech model",["CPU만 사용 (GPU 문제 발생 시)"]="Use CPU only",["가속과 품질"]="Acceleration and quality",
         ["첫 시작에 모델을 내려받아 PC에 보관합니다. 음성 인식과 언어 감지에는 API 키나 사용 요금이 없습니다."]="The model is downloaded once and stored on this computer. Local recognition requires no API key.",

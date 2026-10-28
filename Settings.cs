@@ -8,6 +8,7 @@ public sealed class Settings
     // Keep the previous app-data location so existing settings and protected keys remain available.
     public static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CaptionGlass");
     public string OutputFolder { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "CatchLessons");
+    public bool OutputFolderMigrated { get; set; }
     public string CodexPath { get; set; } = "";
     public string AgentProvider { get; set; } = "chatgpt";
     public string UiLanguage {get;set;}="en";
@@ -104,8 +105,18 @@ public sealed class Settings
     {
         var path = Path.Combine(Root, "settings.json");
         var value=File.Exists(path) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new() : new();
+        value.MigrateOutputFolder();
         if(!LocalModels.WhisperEnabled)value.SpeechEngine="openai";
         value.EnsurePauseShortcut();
         return value;
+    }
+    internal void MigrateOutputFolder()
+    {
+        if(OutputFolderMigrated)return;
+        var documents=Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        var oldDefault=Path.Combine(documents,"CaptionGlass");
+        if(string.Equals(Path.TrimEndingDirectorySeparator(OutputFolder),oldDefault,OperatingSystem.IsWindows()?StringComparison.OrdinalIgnoreCase:StringComparison.Ordinal))
+            OutputFolder=Path.Combine(documents,"CatchLessons");
+        OutputFolderMigrated=true;
     }
 }

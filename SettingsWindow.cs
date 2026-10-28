@@ -197,8 +197,8 @@ public sealed class SettingsWindow : Window
         Label(recordingPage, UiText.T("미리보기"), UiText.T("약 2초부터 원문을 주기적으로 갱신합니다. 확정 전 문장은 바뀔 수 있습니다. PC가 느리면 이 기능을 끌 수 있습니다."));
         Label(recordingPage, UiText.T("저장 폴더"));
         var folderRow = new DockPanel { Height = 36, Margin = new Thickness(0, 5, 0, 16) };
-        var openFolder = IconButton("folder", UiText.T("지정한 저장 폴더를 탐색기로 열기")); openFolder.Margin = new Thickness(6, 0, 0, 0); DockPanel.SetDock(openFolder, Dock.Right); folderRow.Children.Add(openFolder);
-        var browse = IconButton("folder-open", UiText.T("저장 폴더 선택")); browse.Margin = new Thickness(6, 0, 0, 0); DockPanel.SetDock(browse, Dock.Right); folderRow.Children.Add(browse);
+        var openFolder = IconButton("folder-open", UiText.T("지정한 저장 폴더를 탐색기로 열기")); openFolder.Margin = new Thickness(6, 0, 0, 0); DockPanel.SetDock(openFolder, Dock.Right); folderRow.Children.Add(openFolder);
+        var browse = IconButton("folder", UiText.T("저장 폴더 선택")); browse.Margin = new Thickness(6, 0, 0, 0); DockPanel.SetDock(browse, Dock.Right); folderRow.Children.Add(browse);
         var folder = new TextBox { Text = current.OutputFolder, Margin = new Thickness(0), Height = 36 }; folderRow.Children.Add(folder); recordingPage.Children.Add(folderRow);
         var folderNotice = new TextBlock { TextWrapping = TextWrapping.Wrap }; recordingPage.Children.Add(folderNotice);
         openFolder.Click += (_, _) =>

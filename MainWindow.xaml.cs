@@ -89,7 +89,7 @@ public partial class MainWindow : Window
     {
         connectionCheck?.Cancel();using var cancel=new CancellationTokenSource();connectionCheck=cancel;
         var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
-        agentConnected=false;AgentConnectionText.Text=UiText.T("Agent 연결 확인 중…");if(session==null&&!busy)StartButton.IsEnabled=false;
+        agentConnected=false;AgentConnectionText.Text=UiText.T("Agent 연결 확인 중…");AgentConnectionText.ToolTip=null;ShowAgentWarnings([]);if(session==null&&!busy)StartButton.IsEnabled=false;
         var failures=new List<string>();
         async Task Check(string provider)
         {
@@ -99,7 +99,7 @@ public partial class MainWindow : Window
             catch(Exception ex){if(connectionCheck!=cancel||cancel.IsCancellationRequested)return;failures.Add(name);if(provider==snapshot.AgentProvider){AgentConnectionText.Text=UiText.T("Agent 연결 실패");AgentConnectionText.ToolTip=UiText.Status(ex.Message);}}
             finally{if(connectionCheck==cancel&&provider==snapshot.AgentProvider&&session==null&&!busy)StartButton.IsEnabled=agentConnected;}
         }
-        try{await Task.WhenAll(Check("chatgpt"),Check("claude"));if(connectionCheck==cancel)ShowAgentWarnings(failures);}
+        try{await Task.WhenAll(Check("chatgpt"),Check("claude"));if(connectionCheck==cancel){var selected=snapshot.AgentProvider=="claude"?"Claude":"ChatGPT";ShowAgentWarnings(failures.Where(name=>name==selected));if(agentConnected&&failures.Count>0)AgentConnectionText.Text+=" · "+string.Join(", ",failures)+" "+UiText.T("연결 실패");}}
         finally{if(connectionCheck==cancel)connectionCheck=null;}
     }
     private void TopicChanged(object sender,System.Windows.Controls.TextChangedEventArgs e){if(TopicPlaceholder!=null)TopicPlaceholder.Visibility=string.IsNullOrEmpty(TopicInput.Text)?Visibility.Visible:Visibility.Collapsed;}
