@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>CatchLessons</title>
+  <welcome file="welcome.html"/>
+  <options customize="always" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+  <installation-check script="checkAgents()"/>
+  <script><![CDATA[
+    function found(name) {
+      return system.files.fileExistsAtPath('/opt/homebrew/bin/' + name) || system.files.fileExistsAtPath('/usr/local/bin/' + name);
+    }
+    function checkAgents() {
+      if (system.compareVersions(system.version.ProductVersion, '14.0') < 0) {
+        my.result.title='Unsupported macOS version';
+        my.result.message='CatchLessons requires macOS 14 or later.';
+        my.result.type='Fatal';
+        return false;
+      }
+      var missing=[];
+      if (!found('codex')) missing.push('Codex');
+      if (!found('claude')) missing.push('Claude');
+      if (missing.length) {
+        my.result.title='Agent CLI check';
+        my.result.message=missing.join(', ') + ' was not found in standard system locations. Install and sign in to the agent you use. User-specific paths may still be detected by CatchLessons after installation.';
+        my.result.type='Warning';
+        return false;
+      }
+      return true;
+    }
+  ]]></script>
+  <choices-outline><line choice="app"/><line choice="whisper"/></choices-outline>
+  <choice id="app" title="CatchLessons" description="Desktop captions application" enabled="false" selected="true"><pkg-ref id="local.catchlessons.app"/></choice>
+  <choice id="whisper" title="Local Whisper speech models" description="Install offline speech recognition (about 548 MiB). Deselect to use OpenAI API only." selected="true"><pkg-ref id="local.catchlessons.models"/></choice>
+  <pkg-ref id="local.catchlessons.app" version="@VERSION@">app.pkg</pkg-ref>
+  <pkg-ref id="local.catchlessons.models" version="@VERSION@">models.pkg</pkg-ref>
+</installer-gui-script>

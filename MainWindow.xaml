@@ -1,0 +1,138 @@
+<Window x:Class="CatchLessons.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Style="{StaticResource {x:Type Window}}" Title="CatchLessons" Width="920" Height="460" MinWidth="480" MinHeight="280"
+ WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="CanResize" Topmost="True">
+ <Window.Resources>
+  <Style x:Key="HoverControls" TargetType="FrameworkElement">
+   <Setter Property="Visibility" Value="Collapsed"/>
+   <Style.Triggers>
+    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+    <DataTrigger Binding="{Binding IsDropDownOpen, ElementName=SummaryPicker}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+    <DataTrigger Binding="{Binding IsDropDownOpen, ElementName=ModePicker}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+    <DataTrigger Binding="{Binding IsDropDownOpen, ElementName=SourcePicker}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+    <DataTrigger Binding="{Binding IsDropDownOpen, ElementName=TargetPicker}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+    <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=TopicInput}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+   </Style.Triggers>
+  </Style>
+ </Window.Resources>
+ <Grid>
+  <Border CornerRadius="20" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Line}" BorderThickness="1" Padding="18,12">
+   <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Grid x:Name="HeaderControls" Style="{StaticResource HoverControls}">
+     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Border x:Name="DragHandle" Background="Transparent" MouseLeftButtonDown="DragWindow" ToolTip="끌어서 창 이동" ClipToBounds="True">
+      <DockPanel VerticalAlignment="Center" IsHitTestVisible="False">
+       <Image Source="/Assets/app-icon.png" Width="26" Height="26" Margin="0,0,8,0"/>
+       <StackPanel VerticalAlignment="Center"><TextBlock Text="CatchLessons" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+        <TextBlock x:Name="AgentConnectionText" Text="연결 확인 대기" FontSize="10" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis"/>
+       </StackPanel>
+      </DockPanel>
+     </Border>
+     <ComboBox x:Name="ModePicker" Grid.Column="1" Width="108" Margin="6,3,6,3" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ModeChanged" ToolTip="번역 또는 원문만 녹취" AutomationProperties.Name="녹음 모드"/>
+     <StackPanel Grid.Column="2" Orientation="Horizontal">
+      <Button x:Name="StartButton" Content="녹음 시작" Style="{StaticResource PrimaryIconButton}" Tag="{StaticResource Icon-play}" Click="StartStop"/>
+      <Button x:Name="PauseButton" Content="일시정지" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-pause}" IsEnabled="False" Click="PauseRecording"/>
+      <Button x:Name="SettingsButton" Content="설정" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-gear}" Click="OpenSettings"/>
+      <Button Content="최소화" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-minus}" Click="Minimize"/>
+      <Button Content="백그라운드로 숨기기" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-x}" Click="CloseWindow"/>
+     </StackPanel>
+    </Grid>
+    <Grid x:Name="StatusControls" Grid.Row="1" Margin="0,10,0,12" Style="{StaticResource HoverControls}">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="32"/><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
+      <ComboBox x:Name="SourcePicker" DisplayMemberPath="Label" SelectedValuePath="Code" SelectionChanged="LanguageSelectionChanged"
+       ToolTip="원문 언어: 자동 감지 또는 특정 언어" AutomationProperties.Name="원문 언어"/>
+      <Path Grid.Column="1" Data="M 2 8 L 14 8 M 10 4 L 14 8 L 10 12" Stroke="{DynamicResource Muted}" StrokeThickness="1.7" Width="16" Height="16" Stretch="Uniform"/>
+      <ComboBox x:Name="TargetPicker" Grid.Column="2" DisplayMemberPath="Label" SelectedValuePath="Code" SelectionChanged="LanguageSelectionChanged"
+       ToolTip="번역 언어" AutomationProperties.Name="번역 언어"/>
+      <Grid Grid.Column="4"><TextBox x:Name="TopicInput" Height="36" Margin="0" MaxLength="800" VerticalContentAlignment="Center" TextChanged="TopicChanged" LostKeyboardFocus="TopicLostFocus" ToolTip="주제 힌트"/><TextBlock x:Name="TopicPlaceholder" Text="주제 힌트" Foreground="{DynamicResource Muted}" Margin="11,0" VerticalAlignment="Center" IsHitTestVisible="False"/></Grid>
+     </Grid>
+     <DockPanel Grid.Row="1" Margin="2,9,2,0">
+      <TextBlock x:Name="SessionIdText" DockPanel.Dock="Right" FontSize="10" Foreground="{DynamicResource Muted}" Margin="8,0,0,0" Cursor="Hand" MouseLeftButtonUp="CopySessionId" AutomationProperties.Name="Agent 세션 ID"/>
+      <ProgressBar x:Name="Meter" Width="36" Height="3" Maximum="1" Foreground="{DynamicResource Accent}" Background="{DynamicResource Line}" Margin="0,0,9,0"/>
+      <TextBlock x:Name="DetectionText" DockPanel.Dock="Right" Foreground="{DynamicResource Accent}" FontSize="11" Margin="8,0,0,0"/>
+      <TextBlock x:Name="StatusText" Text="시작하면 PC에서 재생되는 소리를 자막으로 표시합니다" Foreground="{DynamicResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+     </DockPanel>
+    </Grid>
+    <Grid Grid.Row="2">
+     <Border x:Name="AgentWarning" Visibility="Collapsed" Panel.ZIndex="3" VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="{DynamicResource Raised}" BorderBrush="#E4947F" BorderThickness="1" CornerRadius="12" Padding="14" Margin="4,4,4,0">
+      <DockPanel><Button x:Name="AgentWarningClose" DockPanel.Dock="Right" Content="닫기" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-x}" Click="DismissAgentWarning"/><Button x:Name="AgentWarningSettings" DockPanel.Dock="Right" IsEnabled="{Binding IsEnabled,ElementName=SettingsButton}" Content="연결 설정" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-gear}" Click="OpenSettings"/><StackPanel><TextBlock x:Name="AgentWarningTitle" Text="연결 확인 필요" FontWeight="SemiBold" Foreground="#E4947F"/><TextBlock x:Name="AgentWarningText" TextWrapping="Wrap" Margin="0,6,0,0"/></StackPanel></DockPanel>
+     </Border>
+     <TextBlock x:Name="EmptyText" Style="{StaticResource HoverControls}" Text="듣는 언어 그대로,&#10;이해하는 언어로."
+      VerticalAlignment="Center" HorizontalAlignment="Left" Margin="8,0,0,0" FontSize="26" FontWeight="SemiBold" LineHeight="38" Foreground="{DynamicResource Muted}"/>
+     <ScrollViewer x:Name="HistoryScroll" HorizontalScrollBarVisibility="Disabled">
+      <ScrollViewer.Style><Style TargetType="ScrollViewer">
+       <Setter Property="VerticalScrollBarVisibility" Value="Hidden"/>
+       <Style.Triggers><DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"><Setter Property="VerticalScrollBarVisibility" Value="Auto"/></DataTrigger></Style.Triggers>
+      </Style></ScrollViewer.Style>
+      <StackPanel>
+       <ItemsControl x:Name="History">
+        <ItemsControl.ItemTemplate><DataTemplate>
+         <StackPanel Margin="4,8,8,20">
+          <TextBlock Text="{Binding Original}" FlowDirection="{Binding SourceDirection}" TextWrapping="Wrap" Margin="0,0,0,6">
+           <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="{DynamicResource Muted}"/>
+            <Style.Triggers><DataTrigger Binding="{Binding IsTranscriptionOnly}" Value="True"><Setter Property="FontSize" Value="{Binding Value, ElementName=FontSizeSlider}"/><Setter Property="Foreground" Value="{DynamicResource Text}"/></DataTrigger></Style.Triggers>
+           </Style></TextBlock.Style>
+          </TextBlock>
+          <TextBlock Text="{Binding DisplayKorean}" FlowDirection="{Binding TranslationDirection}" TextWrapping="Wrap" FontSize="{Binding Value, ElementName=FontSizeSlider}"
+           Foreground="{DynamicResource Text}" LineStackingStrategy="MaxHeight">
+           <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding IsTranscriptionOnly}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+          </TextBlock>
+         </StackPanel>
+        </DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
+       <StackPanel Margin="4,10,8,8">
+        <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers>
+         <DataTrigger Binding="{Binding Text, ElementName=PartialText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+        </Style.Triggers></Style></StackPanel.Style>
+        <TextBlock Text="원문 미리보기 · 인식 중 수정될 수 있습니다" Foreground="{DynamicResource Accent}" FontSize="11" Margin="0,0,0,5"/>
+        <TextBlock x:Name="PartialText" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="16"/>
+       </StackPanel>
+      </StackPanel>
+     </ScrollViewer>
+     <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Style="{StaticResource HoverControls}">
+      <Button x:Name="LatestButton" Content="최신 자막으로" Style="{StaticResource PrimaryIconButton}" Tag="{StaticResource Icon-arrow-down}" Visibility="Collapsed" Click="ResumeFollowing"/>
+     </Border>
+    </Grid>
+    <Grid x:Name="FooterControls" Grid.Row="3" Margin="0,8,0,0" Style="{StaticResource HoverControls}">
+     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+      <Border Background="Transparent" Padding="2,5" ToolTip="자막 글자 크기" ToolTipService.InitialShowDelay="200"><Path Data="{StaticResource Icon-text-aa}" Fill="{DynamicResource Muted}" Width="16" Height="16" Stretch="Uniform" IsHitTestVisible="False"/></Border>
+      <Slider x:Name="FontSizeSlider" Minimum="18" Maximum="36" Value="24" Width="58" Margin="6,0,12,0" ToolTip="자막 글자 크기" AutomationProperties.Name="자막 글자 크기"/>
+      <Border Background="Transparent" Padding="2,5" Margin="0,0,6,0" ToolTip="창 투명도" ToolTipService.InitialShowDelay="200"><Path Data="{StaticResource Icon-circle-half}" Fill="{DynamicResource Muted}" Width="16" Height="16" Stretch="Uniform" IsHitTestVisible="False"/></Border>
+      <Slider x:Name="OpacitySlider" Minimum=".45" Maximum="1" Value="1" Width="48" ToolTip="창 투명도 (오른쪽일수록 선명하게)" AutomationProperties.Name="창 불투명도"/>
+     </StackPanel>
+     <StackPanel Grid.Column="1" Orientation="Horizontal">
+      <CheckBox x:Name="SummaryEnabledToggle" Width="24" Margin="3" VerticalAlignment="Center" ToolTip="중지 후 요약 실행" AutomationProperties.Name="중지 후 요약 실행" Checked="SummaryEnabledChanged" Unchecked="SummaryEnabledChanged"/>
+      <ComboBox x:Name="SummaryPicker" Width="130" Margin="0,3,5,3" FontSize="11" DisplayMemberPath="DisplayName" SelectedValuePath="Id"
+       SelectionChanged="SummaryCategoryChanged" ToolTip="중지 후 노트 정리 방식" AutomationProperties.Name="요약 카테고리"/>
+      <Button x:Name="SummaryRetryButton" Content="요약 실행" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-note-text}" Click="RetrySummary" IsEnabled="False"/>
+      <Button Content="저장 폴더 열기" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-folder-open}" Click="OpenFolder"/>
+     </StackPanel>
+    </Grid>
+   </Grid>
+  </Border>
+  <Border x:Name="ProcessingPanel" Visibility="Collapsed" Margin="20" Padding="20" MaxWidth="560" VerticalAlignment="Center"
+    Background="{DynamicResource Raised}" BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="16">
+   <StackPanel>
+    <TextBlock x:Name="ProcessingTitle" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+    <TextBlock x:Name="ProcessingDetail" Margin="0,9,0,14" FontSize="12" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+    <ProgressBar x:Name="ProcessingProgress" Height="4" Foreground="{DynamicResource Accent}" Background="{DynamicResource Line}" AutomationProperties.Name="저장 및 요약 처리 중"/>
+    <Button x:Name="ProcessingAction" Content="요약 취소" HorizontalAlignment="Right" Margin="0,14,0,0" Click="ProcessingActionClick"/>
+   </StackPanel>
+  </Border>
+  <!-- Native sizing preserves the opposite edge and Windows' minimum-size behavior. -->
+  <Border Width="8" HorizontalAlignment="Left" Margin="0,16,0,16" Background="Transparent" Cursor="SizeWE" Tag="1" MouseLeftButtonDown="ResizeWindow"/>
+  <Border Width="8" HorizontalAlignment="Right" Margin="0,16,0,16" Background="Transparent" Cursor="SizeWE" Tag="2" MouseLeftButtonDown="ResizeWindow"/>
+  <Border Height="8" VerticalAlignment="Top" Margin="16,0,16,0" Background="Transparent" Cursor="SizeNS" Tag="3" MouseLeftButtonDown="ResizeWindow"/>
+  <Border Height="8" VerticalAlignment="Bottom" Margin="16,0,16,0" Background="Transparent" Cursor="SizeNS" Tag="6" MouseLeftButtonDown="ResizeWindow"/>
+  <Border Width="16" Height="16" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNWSE" Tag="4" MouseLeftButtonDown="ResizeWindow"/>
+  <Border Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNESW" Tag="5" MouseLeftButtonDown="ResizeWindow"/>
+  <Border Width="16" Height="16" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNESW" Tag="7" MouseLeftButtonDown="ResizeWindow"/>
+  <Border Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNWSE" Tag="8" MouseLeftButtonDown="ResizeWindow"/>
+ </Grid>
+</Window>
+
+

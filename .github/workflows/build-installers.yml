@@ -1,0 +1,49 @@
+name: Build installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Prepare signed Inno Setup compiler
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .tools | Out-Null
+          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile '.tools/innosetup.exe'
+          $sig = Get-AuthenticodeSignature '.tools/innosetup.exe'
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Pyrsys B.V.') { throw 'Inno Setup signature invalid' }
+          $target = Join-Path $PWD '.tools/inno-portable'
+          $p = Start-Process '.tools/innosetup.exe' -ArgumentList '/CURRENTUSER','/LANG=English','/PORTABLE=1','/NOICONS','/TASKS=','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR='+$target) -WindowStyle Hidden -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw 'Inno Setup extraction failed' }
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatchLessons-Windows
+          path: artifacts/installers/*.exe
+          if-no-files-found: error
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build unsigned Mac installer
+        run: bash installer/macos/build-pkg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatchLessons-${{ matrix.runner }}
+          path: artifacts/installers/*.pkg
+          if-no-files-found: error

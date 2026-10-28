@@ -1,0 +1,12 @@
+.tools/
+bin/
+obj/
+artifacts/
+sessions/
+*.user
+*.lnk
+
+reports/
+VERIFICATION.md
+desktop-ui-check.json
+Assets/readme-hero.png

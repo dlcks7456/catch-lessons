@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+marker="/Library/Application Support/CatchLessons/whisper-disabled.flag"
+if [ -f "$marker" ]; then /bin/rm -f "$marker"; fi

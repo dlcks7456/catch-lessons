@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <!-- Set to owner/repository or https://github.com/owner/repository when the release repository exists. -->
+    <CatchLessonsUpdateRepository Condition="'$(CatchLessonsUpdateRepository)' == ''">dlcks7456/catch-lessons</CatchLessonsUpdateRepository>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CatchLessonsUpdateRepository</_Parameter1>
+      <_Parameter2>$(CatchLessonsUpdateRepository)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>
