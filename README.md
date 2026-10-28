@@ -22,14 +22,18 @@ A personal desktop app that captures system audio, shows the source transcript a
 
 Summaries and translations share the recording's agent conversation. A manual summary and a translation request are serialized through that conversation, so a long summary can delay later translations. A summary covers finalized source text; an unfinished preview may not yet be included.
 
-## 📦 Installation status
+## 📦 Download and install
 
 | Platform | Status | Prerequisites |
 | --- | --- | --- |
 | Windows x64 | Installer built; isolated install, engine checks, and uninstall passed for API-only and Whisper configurations | Windows, and a signed-in Codex CLI or Claude Code CLI |
 | macOS 14+ | Package build scripts prepared; a Mac package has **not** been built or tested | macOS 14+, screen/audio capture permission, and a signed-in agent CLI |
 
-Download the [Windows installer from GitHub Releases](https://github.com/dlcks7456/catch-lessons/releases/latest). The installer is also available locally at `artifacts/installers/CatchLessons-Windows-x64-1.0.0.exe` after building.
+**Windows:** [Download the CatchLessons installer (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-Windows-x64-1.0.0.exe). Open the downloaded file and follow the installation wizard; no source-code build is required.
+
+**Uninstall on Windows:** Open **Settings → Apps → Installed apps**, find **CatchLessons**, and select **Uninstall**. Your recordings and settings are retained.
+
+**macOS:** The installer is not available yet.
 
 During installation, **local Whisper is selected by default**. Deselecting it makes the installation OpenAI-API-only; enter an API key in Connection settings. The installer bundles the .NET runtime and, when selected, the default Whisper and VAD models. The installer checks for agent executables and explains that sign-in is still required; it does not install or log in to an agent for you.
 
@@ -38,7 +42,7 @@ The Windows installer is currently **unsigned**, so Windows reputation checks ma
 ## 🚀 Start
 
 1. Install and sign in to at least one agent: [Codex CLI](https://developers.openai.com/codex/cli) or [Claude Code](https://code.claude.com/docs/en/setup).
-2. Install CatchLessons and choose whether to include local Whisper. Or, in this development workspace, run `CatchLessons.lnk`.
+2. Run the installer and choose whether to include local Whisper.
 3. In **Settings → Connection**, choose the agent and speech engine. If using OpenAI API speech recognition, enter its API key.
 4. Choose source language (auto-detect or fixed), translation language, and an optional topic hint. Korean is the default translation language; the app interface defaults to English and can be switched to Korean.
 5. Start recording. Pause/resume as needed. Stop to save captions and, if enabled, create a summary.
@@ -79,6 +83,9 @@ The build checks GitHub Releases at `dlcks7456/catch-lessons` from **Settings �
 
 The app version and installer version come from `Directory.Build.props`. The repository can run `.github/workflows/build-installers.yml` manually to build artifacts; it does not publish a release automatically. The workflow and Mac packaging have not yet run on GitHub.
 
+<details>
+<summary>Developer build instructions</summary>
+
 ## 🛠️ Build
 
 ### Windows
@@ -101,6 +108,8 @@ bash installer/macos/build-pkg.sh
 ```
 
 The script builds the app and an architecture-specific package, downloads and verifies models if necessary, and provides an optional local-model installation choice. It has not been run on macOS. Optional `CAPTION_APP_SIGN_IDENTITY` and `CAPTION_INSTALLER_SIGN_IDENTITY` support local signing; notarization is a separate release step.
+
+</details>
 
 ## 🔒 Data and limits
 

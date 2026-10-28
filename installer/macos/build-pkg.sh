@@ -25,7 +25,7 @@ cp "$root/installer/macos/welcome.html" "$root/Assets/installer-art.png" "$tmp/r
 pkgbuild --component "$app" --install-location /Applications --scripts "$tmp/app-scripts" --identifier local.catchlessons.app --version "$version" "$tmp/app.pkg"
 pkgbuild --root "$tmp/root" --install-location / --scripts "$tmp/model-scripts" --identifier local.catchlessons.models --version "$version" "$tmp/models.pkg"
 sed "s/@VERSION@/$version/g" "$root/installer/macos/distribution.xml" > "$tmp/distribution.xml"
-sign=()
-if [ -n "${CAPTION_INSTALLER_SIGN_IDENTITY:-}" ]; then sign=(--sign "$CAPTION_INSTALLER_SIGN_IDENTITY"); fi
-productbuild --distribution "$tmp/distribution.xml" --resources "$tmp/resources" --package-path "$tmp" "${sign[@]}" "$root/artifacts/installers/CatchLessons-macOS-$arch-$version.pkg"
+set --
+if [ -n "${CAPTION_INSTALLER_SIGN_IDENTITY:-}" ]; then set -- --sign "$CAPTION_INSTALLER_SIGN_IDENTITY"; fi
+productbuild --distribution "$tmp/distribution.xml" --resources "$tmp/resources" --package-path "$tmp" "$@" "$root/artifacts/installers/CatchLessons-macOS-$arch-$version.pkg"
 echo "Built package: $root/artifacts/installers/CatchLessons-macOS-$arch-$version.pkg"

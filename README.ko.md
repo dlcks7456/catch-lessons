@@ -22,14 +22,18 @@ PC에서 재생되는 소리를 받아 원문과 선택적인 번역을 플로�
 
 요약과 번역은 같은 녹음의 Agent 대화를 사용합니다. 수동 요약과 번역 요청은 순차 처리되므로 긴 요약이 이후 번역을 지연시킬 수 있습니다. 수동 요약은 확정 원문을 기준으로 하며, 아직 끝나지 않은 미리보기는 포함되지 않을 수 있습니다.
 
-## 📦 설치 현황
+## 📦 다운로드 및 설치
 
 | 플랫폼 | 상태 | 준비 사항 |
 | --- | --- | --- |
 | Windows x64 | API 전용과 Whisper 포함 두 방식의 격리 설치·제거 검사 완료 | Windows 및 로그인된 Codex CLI 또는 Claude Code CLI |
 | macOS 14+ | 패키지 빌드 스크립트 준비; Mac 설치 파일은 **아직 빌드·검증하지 않음** | macOS 14+, 화면/시스템 오디오 캡처 권한, 로그인된 Agent CLI |
 
-[GitHub Releases에서 Windows 설치 파일을 다운로드](https://github.com/dlcks7456/catch-lessons/releases/latest)할 수 있습니다. 빌드 후에는 로컬의 `artifacts/installers/CatchLessons-Windows-x64-1.0.0.exe`에서도 확인할 수 있습니다.
+**Windows:** [CatchLessons 설치 파일 다운로드 (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-Windows-x64-1.0.0.exe). 내려받은 파일을 실행하고 설치 마법사의 안내를 따르면 됩니다. 소스 코드를 빌드할 필요는 없습니다.
+
+**Windows에서 삭제:** **설정 → 앱 → 설치된 앱**에서 **CatchLessons**를 찾아 **제거**를 선택합니다. 녹음 파일과 사용자 설정은 유지됩니다.
+
+**macOS:** 설치 파일은 아직 제공되지 않습니다.
 
 설치 시 **로컬 Whisper 설치가 기본 선택**입니다. 선택을 해제하면 OpenAI API 전용 설치가 되며 연결 설정에서 API 키를 입력해야 합니다. 설치 파일에는 .NET 런타임과, 선택 시 사용할 기본 Whisper·VAD 모델이 포함됩니다. 설치 프로그램은 Agent 실행 파일을 확인하고 로그인 필요 여부를 안내하지만 Agent를 대신 설치하거나 로그인하지는 않습니다.
 
@@ -38,7 +42,7 @@ PC에서 재생되는 소리를 받아 원문과 선택적인 번역을 플로�
 ## 🚀 시작하기
 
 1. 사용할 Agent를 설치하고 로그인합니다: [Codex CLI](https://developers.openai.com/codex/cli) 또는 [Claude Code](https://code.claude.com/docs/en/setup).
-2. CatchLessons를 설치하면서 로컬 Whisper 포함 여부를 고릅니다. 이 개발 폴더에서는 `CatchLessons.lnk`로 실행할 수도 있습니다.
+2. 설치 파일을 실행하고 로컬 Whisper 포함 여부를 고릅니다.
 3. **설정 → 연결**에서 Agent와 음성 인식 엔진을 선택합니다. OpenAI API 인식을 사용하면 API 키를 입력합니다.
 4. 원문 언어의 자동 감지 또는 고정 언어, 번역 언어, 선택적인 주제 힌트를 설정합니다. 번역 기본값은 한국어이고 앱 화면 기본값은 영어입니다. 화면 언어는 한국어로 바꿀 수 있습니다.
 5. 녹음을 시작하고 필요할 때 일시정지·재개합니다. 중지하면 자막을 저장하고, 활성화한 경우 요약을 만듭니다.
@@ -79,6 +83,9 @@ Windows는 마이크가 아닌 시스템 출력 장치를 캡처합니다. macOS
 
 앱과 설치 파일의 버전은 `Directory.Build.props`에서 관리합니다. 추후 저장소에서 `.github/workflows/build-installers.yml`을 수동 실행해 빌드 산출물을 만들 수 있으며, 릴리스를 자동 게시하지 않습니다. 이 워크플로우와 Mac 패키지는 GitHub에서 아직 실행하지 않았습니다.
 
+<details>
+<summary>개발자를 위한 빌드 안내</summary>
+
 ## 🛠️ 빌드
 
 ### Windows
@@ -101,6 +108,8 @@ bash installer/macos/build-pkg.sh
 ```
 
 앱과 CPU 아키텍처별 패키지를 만들고, 필요한 경우 모델을 내려받아 체크섬을 확인합니다. 로컬 모델 설치 여부를 선택할 수 있도록 준비했습니다. 이 스크립트는 실제 Mac에서 실행하지 않았습니다. 선택적인 `CAPTION_APP_SIGN_IDENTITY`와 `CAPTION_INSTALLER_SIGN_IDENTITY`로 로컬 서명을 지정할 수 있으며 공증은 별도 릴리스 단계입니다.
+
+</details>
 
 ## 🔒 데이터와 제한
 
