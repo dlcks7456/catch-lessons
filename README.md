@@ -4,6 +4,8 @@
 
 A personal desktop app that captures system audio, shows the source transcript and an optional translation in a floating window, and saves captions and notes locally.
 
+I built CatchLessons to make studying more convenient. It is not a professional translation app.
+
 [한국어 문서](README.ko.md)
 
 > **Not instant real-time translation.** Source previews are provisional. Final captions are recognized in audio segments and translated through an agent request, so display can lag and earlier previews can change. Network, agent response, audio segmentation, and hardware all affect delay; no fixed latency is guaranteed.
