@@ -27,13 +27,13 @@ Summaries and translations share the recording's agent conversation. A manual su
 | Platform | Status | Prerequisites |
 | --- | --- | --- |
 | Windows x64 | Installer built; isolated install, engine checks, and uninstall passed for API-only and Whisper configurations | Windows, and a signed-in Codex CLI or Claude Code CLI |
-| macOS 14+ | Package build scripts prepared; a Mac package has **not** been built or tested | macOS 14+, screen/audio capture permission, and a signed-in agent CLI |
+| macOS 14+ | Apple Silicon and Intel packages built on GitHub Actions; **installation and app behavior untested** | macOS 14+, screen/audio capture permission, and a signed-in agent CLI |
 
 **Windows:** [Download the CatchLessons installer (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-Windows-x64-1.0.0.exe). Open the downloaded file and follow the installation wizard; no source-code build is required.
 
 **Uninstall on Windows:** Open **Settings → Apps → Installed apps**, find **CatchLessons**, and select **Uninstall**. Your recordings and settings are retained.
 
-**macOS:** The installer is not available yet.
+**macOS (experimental):** Download [Apple Silicon (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-macOS-arm64-1.0.0.pkg) or [Intel (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-macOS-x64-1.0.0.pkg). Open the package to use the macOS installer. These packages are unsigned and unnotarized, so macOS security settings may prevent installation; real-device installation and app behavior remain unverified.
 
 During installation, **local Whisper is selected by default**. Deselecting it makes the installation OpenAI-API-only; enter an API key in Connection settings. The installer bundles the .NET runtime and, when selected, the default Whisper and VAD models. The installer checks for agent executables and explains that sign-in is still required; it does not install or log in to an agent for you.
 
@@ -81,7 +81,7 @@ A configured post-recording workflow can intentionally create other files. Exist
 
 The build checks GitHub Releases at `dlcks7456/catch-lessons` from **Settings → General**.  Users can then check for a newer compatible installer and open its download in the browser. Run the downloaded installer yourself; the app does not silently download or execute it. Private GitHub Releases are not supported.
 
-The app version and installer version come from `Directory.Build.props`. The repository can run `.github/workflows/build-installers.yml` manually to build artifacts; it does not publish a release automatically. The workflow and Mac packaging have not yet run on GitHub.
+The app version and installer version come from `Directory.Build.props`. The repository can run `.github/workflows/build-installers.yml` manually to build artifacts; it does not publish a release automatically. The installer workflow has run on GitHub Actions; the Mac packages have not been tested on a physical Mac.
 
 <details>
 <summary>Developer build instructions</summary>
@@ -99,7 +99,7 @@ Requires .NET 10 SDK, Inno Setup 6 and network access if the model files are not
 
 The installer builder verifies model SHA-256 hashes and writes the standalone executable to `artifacts/installers/`. `./scripts/verify-windows-installer.ps1` tests both installer choices in unique workspace paths and uninstalls those test copies; it refuses to run if an existing CatchLessons installer registration is found.
 
-### macOS — prepared, not verified
+### macOS — built, not tested on a physical Mac
 
 On a Mac with .NET 10 SDK, Xcode Command Line Tools and macOS 14 or later:
 
@@ -107,7 +107,7 @@ On a Mac with .NET 10 SDK, Xcode Command Line Tools and macOS 14 or later:
 bash installer/macos/build-pkg.sh
 ```
 
-The script builds the app and an architecture-specific package, downloads and verifies models if necessary, and provides an optional local-model installation choice. It has not been run on macOS. Optional `CAPTION_APP_SIGN_IDENTITY` and `CAPTION_INSTALLER_SIGN_IDENTITY` support local signing; notarization is a separate release step.
+The script builds the app and an architecture-specific package, downloads and verifies models if necessary, and provides an optional local-model installation choice. It has run on GitHub-hosted macOS builders, but installation has not been tested. Optional `CAPTION_APP_SIGN_IDENTITY` and `CAPTION_INSTALLER_SIGN_IDENTITY` support local signing; notarization is a separate release step.
 
 </details>
 

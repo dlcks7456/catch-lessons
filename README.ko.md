@@ -27,13 +27,13 @@ PC에서 재생되는 소리를 받아 원문과 선택적인 번역을 플로�
 | 플랫폼 | 상태 | 준비 사항 |
 | --- | --- | --- |
 | Windows x64 | API 전용과 Whisper 포함 두 방식의 격리 설치·제거 검사 완료 | Windows 및 로그인된 Codex CLI 또는 Claude Code CLI |
-| macOS 14+ | 패키지 빌드 스크립트 준비; Mac 설치 파일은 **아직 빌드·검증하지 않음** | macOS 14+, 화면/시스템 오디오 캡처 권한, 로그인된 Agent CLI |
+| macOS 14+ | Apple Silicon·Intel 패키지 GitHub Actions 빌드 완료; **설치와 앱 동작 미검증** | macOS 14+, 화면/시스템 오디오 캡처 권한, 로그인된 Agent CLI |
 
 **Windows:** [CatchLessons 설치 파일 다운로드 (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-Windows-x64-1.0.0.exe). 내려받은 파일을 실행하고 설치 마법사의 안내를 따르면 됩니다. 소스 코드를 빌드할 필요는 없습니다.
 
 **Windows에서 삭제:** **설정 → 앱 → 설치된 앱**에서 **CatchLessons**를 찾아 **제거**를 선택합니다. 녹음 파일과 사용자 설정은 유지됩니다.
 
-**macOS:** 설치 파일은 아직 제공되지 않습니다.
+**macOS (시험판):** [Apple Silicon 설치 파일 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-macOS-arm64-1.0.0.pkg) 또는 [Intel 설치 파일 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-macOS-x64-1.0.0.pkg)을 다운로드해 macOS 설치 프로그램으로 실행합니다. 서명·공증되지 않아 macOS 보안 설정에서 설치가 차단될 수 있으며 실제 Mac 설치와 앱 동작은 아직 검증하지 않았습니다.
 
 설치 시 **로컬 Whisper 설치가 기본 선택**입니다. 선택을 해제하면 OpenAI API 전용 설치가 되며 연결 설정에서 API 키를 입력해야 합니다. 설치 파일에는 .NET 런타임과, 선택 시 사용할 기본 Whisper·VAD 모델이 포함됩니다. 설치 프로그램은 Agent 실행 파일을 확인하고 로그인 필요 여부를 안내하지만 Agent를 대신 설치하거나 로그인하지는 않습니다.
 
@@ -81,7 +81,7 @@ Windows는 마이크가 아닌 시스템 출력 장치를 캡처합니다. macOS
 
 빌드에 `dlcks7456/catch-lessons` 저장소가 지정되어 있으며 **설정 → 일반**에서 GitHub Release 업데이트를 확인합니다. 이후 사용자는 새 호환 설치 파일을 확인하고 브라우저에서 내려받아 직접 실행할 수 있습니다. 앱이 설치 파일을 조용히 내려받거나 실행하지는 않습니다. 현재 확인 기능은 공개 GitHub Release만 지원합니다.
 
-앱과 설치 파일의 버전은 `Directory.Build.props`에서 관리합니다. 추후 저장소에서 `.github/workflows/build-installers.yml`을 수동 실행해 빌드 산출물을 만들 수 있으며, 릴리스를 자동 게시하지 않습니다. 이 워크플로우와 Mac 패키지는 GitHub에서 아직 실행하지 않았습니다.
+앱과 설치 파일의 버전은 `Directory.Build.props`에서 관리합니다. 추후 저장소에서 `.github/workflows/build-installers.yml`을 수동 실행해 빌드 산출물을 만들 수 있으며, 릴리스를 자동 게시하지 않습니다. 설치 프로그램 워크플로우는 GitHub Actions에서 실행했으며, Mac 패키지의 실기기 설치는 아직 검증하지 않았습니다.
 
 <details>
 <summary>개발자를 위한 빌드 안내</summary>
@@ -99,7 +99,7 @@ Windows는 마이크가 아닌 시스템 출력 장치를 캡처합니다. macOS
 
 설치 파일 빌더는 모델 SHA-256을 검증하고 `artifacts/installers/`에 독립 실행 파일을 만듭니다. `./scripts/verify-windows-installer.ps1`은 작업 폴더의 고유 경로에서 두 설치 선택지를 테스트하고 해당 테스트 설치를 제거합니다. 기존 CatchLessons 설치 등록이 있으면 실행하지 않습니다.
 
-### macOS — 준비만 됨, 미검증
+### macOS — 빌드 완료, 실기기 미검증
 
 .NET 10 SDK와 Xcode Command Line Tools가 설치된 macOS 14 이상에서 실행합니다.
 
@@ -107,7 +107,7 @@ Windows는 마이크가 아닌 시스템 출력 장치를 캡처합니다. macOS
 bash installer/macos/build-pkg.sh
 ```
 
-앱과 CPU 아키텍처별 패키지를 만들고, 필요한 경우 모델을 내려받아 체크섬을 확인합니다. 로컬 모델 설치 여부를 선택할 수 있도록 준비했습니다. 이 스크립트는 실제 Mac에서 실행하지 않았습니다. 선택적인 `CAPTION_APP_SIGN_IDENTITY`와 `CAPTION_INSTALLER_SIGN_IDENTITY`로 로컬 서명을 지정할 수 있으며 공증은 별도 릴리스 단계입니다.
+앱과 CPU 아키텍처별 패키지를 만들고, 필요한 경우 모델을 내려받아 체크섬을 확인합니다. 로컬 모델 설치 여부를 선택할 수 있도록 준비했습니다. 이 스크립트는 GitHub의 macOS 빌드 환경에서 실행했으며 실기기 설치는 검증하지 않았습니다. 선택적인 `CAPTION_APP_SIGN_IDENTITY`와 `CAPTION_INSTALLER_SIGN_IDENTITY`로 로컬 서명을 지정할 수 있으며 공증은 별도 릴리스 단계입니다.
 
 </details>
 
