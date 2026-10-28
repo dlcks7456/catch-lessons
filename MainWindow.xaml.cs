@@ -556,8 +556,8 @@ public partial class MainWindow : Window
     {
         EmptyText.Visibility = Visibility.Collapsed;
         StatusText.Text = UiText.T("미리보기 · 실제 음성을 처리하고 있지 않습니다");
-        rows.Add(new(new(1, "preview", 0, 3, "A small window. A clearer understanding.", UiText.T("작은 창으로, 더 선명하게 이해하세요."), "done")));
-        rows.Add(new(new(2, "preview2", 3, 7, "Keep listening. Your words are saved locally.", UiText.T("계속 들어보세요. 원문과 번역은 PC에 저장됩니다."), "done")));
+        rows.Add(new(new(1, "preview", 0, 3, "A small window. A clearer understanding.", "작은 창으로, 더 선명하게 이해하세요.", "done")));
+        rows.Add(new(new(2, "preview2", 3, 7, "Keep listening. Your words are saved locally.", "계속 들어보세요. 말한 내용은 PC에 저장됩니다.", "done")));
     }
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);

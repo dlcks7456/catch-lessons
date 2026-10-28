@@ -1,4 +1,4 @@
-<p align="center"><img src="Assets/readme-hero-catchlessons.png" alt="CatchLessons: listen, understand, and keep the context" width="100%"></p>
+<p align="center"><img src="Assets/readme-hero-catchlessons.png" alt="CatchLessons: English speech with Korean translation" width="100%"></p>
 
 # CatchLessons
 
@@ -8,7 +8,7 @@ A personal desktop app that captures system audio, shows the source transcript a
 
 > **Not instant real-time translation.** Source previews are provisional. Final captions are recognized in audio segments and translated through an agent request, so display can lag and earlier previews can change. Network, agent response, audio segmentation, and hardware all affect delay; no fixed latency is guaranteed.
 
-<p align="center"><img src="Assets/screenshot-main.png" alt="Illustrative CatchLessons window showing a floating caption interface" width="880"></p>
+<p align="center"><img src="Assets/screenshot-main.png" alt="CatchLessons floating captions showing English speech and Korean translations" width="880"></p>
 
 ## ✨ What it does
 

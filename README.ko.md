@@ -1,4 +1,4 @@
-<p align="center"><img src="Assets/readme-hero-catchlessons.png" alt="CatchLessons: 듣고, 이해하고, 맥락을 남기는 자막 앱" width="100%"></p>
+<p align="center"><img src="Assets/readme-hero-catchlessons.png" alt="CatchLessons: 영어 원문과 한국어 번역 예시" width="100%"></p>
 
 # CatchLessons
 
@@ -8,7 +8,7 @@ PC에서 재생되는 소리를 받아 원문과 선택적인 번역을 플로�
 
 > **완전한 실시간 번역은 아닙니다.** 원문 미리보기는 확정 전 결과입니다. 확정 자막은 음성을 구간별로 인식한 뒤 Agent에 번역을 요청하므로 표시가 늦어지거나 앞서 보인 미리보기가 바뀔 수 있습니다. 네트워크, Agent 응답, 음성 분할과 PC 성능에 따라 지연이 달라지며 고정된 지연 시간은 보장하지 않습니다.
 
-<p align="center"><img src="Assets/screenshot-main.png" alt="플로팅 자막 화면의 예시 이미지" width="880"></p>
+<p align="center"><img src="Assets/screenshot-main.png" alt="영어 원문과 한국어 번역을 표시하는 플로팅 자막 화면" width="880"></p>
 
 ## ✨ 주요 기능
 
