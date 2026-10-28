@@ -29,7 +29,7 @@ Summaries and translations share the recording's agent conversation. A manual su
 | Windows x64 | Installer built; isolated install, engine checks, and uninstall passed for API-only and Whisper configurations | Windows, and a signed-in Codex CLI or Claude Code CLI |
 | macOS 14+ | Package build scripts prepared; a Mac package has **not** been built or tested | macOS 14+, screen/audio capture permission, and a signed-in agent CLI |
 
-The current Windows installer is `artifacts/installers/CatchLessons-Windows-x64-1.0.0.exe` in this workspace. The GitHub repository is available; no release has been published yet. Installer files belong in GitHub Releases, not ordinary Git history.
+Download the [Windows installer from GitHub Releases](https://github.com/dlcks7456/catch-lessons/releases/latest). The installer is also available locally at `artifacts/installers/CatchLessons-Windows-x64-1.0.0.exe` after building.
 
 During installation, **local Whisper is selected by default**. Deselecting it makes the installation OpenAI-API-only; enter an API key in Connection settings. The installer bundles the .NET runtime and, when selected, the default Whisper and VAD models. The installer checks for agent executables and explains that sign-in is still required; it does not install or log in to an agent for you.
 
@@ -75,7 +75,7 @@ A configured post-recording workflow can intentionally create other files. Exist
 
 ## 🔄 Updates
 
-The build checks GitHub Releases at `dlcks7456/catch-lessons` from **Settings → General**. No release has been published yet. Users can then check for a newer compatible installer and open its download in the browser. Run the downloaded installer yourself; the app does not silently download or execute it. Private GitHub Releases are not supported.
+The build checks GitHub Releases at `dlcks7456/catch-lessons` from **Settings → General**.  Users can then check for a newer compatible installer and open its download in the browser. Run the downloaded installer yourself; the app does not silently download or execute it. Private GitHub Releases are not supported.
 
 The app version and installer version come from `Directory.Build.props`. The repository can run `.github/workflows/build-installers.yml` manually to build artifacts; it does not publish a release automatically. The workflow and Mac packaging have not yet run on GitHub.
 

@@ -29,7 +29,7 @@ PC에서 재생되는 소리를 받아 원문과 선택적인 번역을 플로�
 | Windows x64 | API 전용과 Whisper 포함 두 방식의 격리 설치·제거 검사 완료 | Windows 및 로그인된 Codex CLI 또는 Claude Code CLI |
 | macOS 14+ | 패키지 빌드 스크립트 준비; Mac 설치 파일은 **아직 빌드·검증하지 않음** | macOS 14+, 화면/시스템 오디오 캡처 권한, 로그인된 Agent CLI |
 
-현재 Windows 설치 파일은 이 작업 폴더의 `artifacts/installers/CatchLessons-Windows-x64-1.0.0.exe`입니다. GitHub 저장소는 준비되어 있으나 아직 릴리스는 없습니다. 큰 설치 파일은 일반 Git 이력이 아닌 GitHub Release 첨부 파일로 배포하세요.
+[GitHub Releases에서 Windows 설치 파일을 다운로드](https://github.com/dlcks7456/catch-lessons/releases/latest)할 수 있습니다. 빌드 후에는 로컬의 `artifacts/installers/CatchLessons-Windows-x64-1.0.0.exe`에서도 확인할 수 있습니다.
 
 설치 시 **로컬 Whisper 설치가 기본 선택**입니다. 선택을 해제하면 OpenAI API 전용 설치가 되며 연결 설정에서 API 키를 입력해야 합니다. 설치 파일에는 .NET 런타임과, 선택 시 사용할 기본 Whisper·VAD 모델이 포함됩니다. 설치 프로그램은 Agent 실행 파일을 확인하고 로그인 필요 여부를 안내하지만 Agent를 대신 설치하거나 로그인하지는 않습니다.
 
@@ -75,7 +75,7 @@ Windows는 마이크가 아닌 시스템 출력 장치를 캡처합니다. macOS
 
 ## 🔄 업데이트
 
-빌드에 `dlcks7456/catch-lessons` 저장소가 지정되어 있으며 **설정 → 일반**에서 GitHub Release 업데이트를 확인합니다. 아직 릴리스는 없습니다. 이후 사용자는 새 호환 설치 파일을 확인하고 브라우저에서 내려받아 직접 실행할 수 있습니다. 앱이 설치 파일을 조용히 내려받거나 실행하지는 않습니다. 현재 확인 기능은 공개 GitHub Release만 지원합니다.
+빌드에 `dlcks7456/catch-lessons` 저장소가 지정되어 있으며 **설정 → 일반**에서 GitHub Release 업데이트를 확인합니다. 이후 사용자는 새 호환 설치 파일을 확인하고 브라우저에서 내려받아 직접 실행할 수 있습니다. 앱이 설치 파일을 조용히 내려받거나 실행하지는 않습니다. 현재 확인 기능은 공개 GitHub Release만 지원합니다.
 
 앱과 설치 파일의 버전은 `Directory.Build.props`에서 관리합니다. 추후 저장소에서 `.github/workflows/build-installers.yml`을 수동 실행해 빌드 산출물을 만들 수 있으며, 릴리스를 자동 게시하지 않습니다. 이 워크플로우와 Mac 패키지는 GitHub에서 아직 실행하지 않았습니다.
 
