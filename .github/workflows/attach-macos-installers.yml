@@ -1,0 +1,35 @@
+name: Attach macOS installers
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful installer build run ID
+        required: true
+      tag:
+        description: Existing release tag
+        required: true
+permissions:
+  actions: read
+  contents: write
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: CatchLessons-macos-15
+          path: installers
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: CatchLessons-macos-15-intel
+          path: installers
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Attach installers to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" installers/CatchLessons-macOS-arm64-*.pkg installers/CatchLessons-macOS-x64-*.pkg --repo "$REPO"
