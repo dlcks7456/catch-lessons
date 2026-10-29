@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-root="$(cd "$(dirname "$0")" && pwd)"
+root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' "$root/Directory.Build.props")"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid version' >&2; exit 1; }
@@ -17,7 +17,7 @@ for size in 16 32 128 256 512; do
   double=$((size*2)); sips -z "$double" "$double" "$root/Assets/app-icon.png" --out "$icon_tmp/App.iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$icon_tmp/App.iconset" -o "$app/Contents/Resources/app.icns"
-dotnet publish Desktop/CatchLessons.Desktop.csproj -c Release -r "$rid" --self-contained true -o "$out"
+dotnet publish src/CatchLessons.Desktop/CatchLessons.Desktop.csproj -c Release -r "$rid" --self-contained true -o "$out"
 xcrun swiftc -O -parse-as-library -target "$arch-apple-macos14.0" native/mac/AudioCapture.swift -framework ScreenCaptureKit -framework CoreMedia -framework AudioToolbox -o "$out/native/caption-audio"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

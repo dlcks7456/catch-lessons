@@ -19,6 +19,10 @@ internal static class FeatureTests
         Check(!UpdateService.Parse("acme/caption",release.Replace("v1.2.0","v1.2"),"1.2.0",false).Newer,"Equivalent short version does not trigger an update");
         bool unsafeReleaseRejected=false;try{UpdateService.Parse("acme/caption",release.Replace("github.com/acme","evil.example/acme"),"1.0.0",false);}catch(IOException){unsafeReleaseRejected=true;}Check(unsafeReleaseRejected&&!UpdateService.ValidRepository("../outside"),"Update source and release URL validation");
         Check(settings.Shortcuts["pauseResume"]=="Primary+Alt+P","Pause shortcut default");
+        var languageMarker=Path.Combine(Environment.CurrentDirectory,"artifacts","language-test-"+Guid.NewGuid().ToString("N"));
+        Check(Settings.InitialUiLanguage(languageMarker)=="en","Missing installer language defaults to English");
+        await File.WriteAllTextAsync(languageMarker,"ko");Check(Settings.InitialUiLanguage(languageMarker)=="ko","Korean installer language is used on first run");File.Delete(languageMarker);
+        Check(JsonSerializer.Deserialize<Settings>("{\"UiLanguage\":\"en\"}")!.UiLanguage=="en","Existing language setting remains explicit");
         var documents=Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);var oldFolder=Path.Combine(documents,"CaptionGlass");var newFolder=Path.Combine(documents,"CatchLessons");
         var migrated=new Settings{OutputFolder=oldFolder};migrated.MigrateOutputFolder();Check(migrated.OutputFolder==newFolder&&migrated.OutputFolderMigrated,"Legacy default output folder migrates");
         migrated.OutputFolder=oldFolder;migrated.MigrateOutputFolder();Check(migrated.OutputFolder==oldFolder,"A later explicit choice of the legacy folder is preserved");

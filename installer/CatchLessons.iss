@@ -43,13 +43,14 @@ korean.ApiOnly=로컬 Whisper를 설치하지 않으면 앱에서 OpenAI API와 
 [Tasks]
 Name: "whisper"; Description: "{cm:WhisperTask}"; Flags: checkedonce
 [Files]
-Source: "..\artifacts\app\*"; DestDir: "{app}"; Excludes: "models\*,*.pdb,whisper-disabled.flag"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\artifacts\app\models\ggml-large-v3-turbo-q5_0.bin"; DestDir: "{app}\models"; Tasks: whisper; Flags: ignoreversion
-Source: "..\artifacts\app\models\ggml-silero-v6.2.0.bin"; DestDir: "{app}\models"; Tasks: whisper; Flags: ignoreversion
+Source: "..\artifacts\installer-app\*"; DestDir: "{app}"; Excludes: "models\*,*.pdb,whisper-disabled.flag,install-language.txt"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\installer-app\models\ggml-large-v3-turbo-q5_0.bin"; DestDir: "{app}\models"; Tasks: whisper; Flags: ignoreversion
+Source: "..\artifacts\installer-app\models\ggml-silero-v6.2.0.bin"; DestDir: "{app}\models"; Tasks: whisper; Flags: ignoreversion
 [Icons]
 Name: "{group}\CatchLessons"; Filename: "{app}\CatchLessons.exe"; WorkingDir: "{app}"
 [UninstallDelete]
 Type: files; Name: "{app}\whisper-disabled.flag"
+Type: files; Name: "{app}\install-language.txt"
 [Run]
 Filename: "{app}\CatchLessons.exe"; Description: "Launch CatchLessons"; Flags: nowait postinstall skipifsilent
 [Code]
@@ -76,9 +77,13 @@ begin
   L.Caption := 'Codex: ' + CodeStatus + #13#10#13#10 + 'Claude: ' + ClaudeStatus + #13#10#13#10 + CustomMessage('AgentHelp') + #13#10#13#10 + CustomMessage('ApiOnly');
 end;
 procedure CurStepChanged(CurStep: TSetupStep);
-var Marker: String;
+var Marker, CodeStatus: String;
 begin
   if CurStep = ssPostInstall then begin
+    if not FileExists(ExpandConstant('{localappdata}\CaptionGlass\settings.json')) then begin
+      if ActiveLanguage = 'korean' then CodeStatus := 'ko' else CodeStatus := 'en';
+      if not SaveStringToFile(ExpandConstant('{app}\install-language.txt'), CodeStatus, False) then RaiseException('Cannot save installer language.');
+    end;
     Marker := ExpandConstant('{app}\whisper-disabled.flag');
     if WizardIsTaskSelected('whisper') then begin if FileExists(Marker) then DeleteFile(Marker); end
     else if not SaveStringToFile(Marker, 'API-only installation', False) then RaiseException('Cannot save speech engine selection.');

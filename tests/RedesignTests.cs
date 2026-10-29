@@ -70,6 +70,7 @@ internal static class RedesignTests
             var layout = (Grid)((Border)settings.Content).Child;
             var tabs = layout.Children.OfType<TabControl>().Single();
             var general=(StackPanel)((ScrollViewer)((TabItem)tabs.Items[0]).Content).Content;
+            Check(general.Children.OfType<ComboBox>().Any(c=>Equals(c.SelectedValue,"en")),"App language selector is in General");
             Check(!general.Children.OfType<TextBox>().Any(),"General settings do not expose a repository input");
             if(!UpdateService.RepositoryConfigured)Check(general.Children.OfType<TextBlock>().Any(t=>t.Text==UiText.T("업데이트 저장소가 설정되지 않았습니다."))&&general.Children.OfType<Button>().Any(b=>Equals(b.Content,UiText.T("업데이트 확인"))&&!b.IsEnabled),"Missing build repository is shown and update check is disabled");
             for (int index = 0; index < tabs.Items.Count; index++)

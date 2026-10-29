@@ -27,9 +27,11 @@
       return true;
     }
   ]]></script>
-  <choices-outline><line choice="app"/><line choice="whisper"/></choices-outline>
+  <choices-outline><line choice="app"/><line choice="whisper"/><line choice="language-ko"/></choices-outline>
   <choice id="app" title="CatchLessons" description="Desktop captions application" enabled="false" selected="true"><pkg-ref id="local.catchlessons.app"/></choice>
   <choice id="whisper" title="Local Whisper speech models" description="Install offline speech recognition (about 548 MiB). Deselect to use OpenAI API only." selected="true"><pkg-ref id="local.catchlessons.models"/></choice>
+  <choice id="language-ko" title="한국어 앱 언어 / Korean interface" description="Select Korean as the initial app language. Leave unselected for English." selected="false"><pkg-ref id="local.catchlessons.language-ko"/></choice>
+  <pkg-ref id="local.catchlessons.language-ko" version="@VERSION@">language-ko.pkg</pkg-ref>
   <pkg-ref id="local.catchlessons.app" version="@VERSION@">app.pkg</pkg-ref>
   <pkg-ref id="local.catchlessons.models" version="@VERSION@">models.pkg</pkg-ref>
 </installer-gui-script>

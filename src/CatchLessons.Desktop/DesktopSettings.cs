@@ -25,7 +25,7 @@ internal sealed class DesktopSettings:Window
         var done=Ui.Button(UiText.T("닫기"),()=>Close());DockPanel.SetDock(done,Dock.Bottom);root.Children.Add(done);
         var tabs=new TabControl();root.Children.Add(tabs);var pages=new List<TabItem>();
         StackPanel Page(string name){var panel=new StackPanel{Spacing=4};pages.Add(new(){Header=name,Content=new ScrollViewer{Content=panel}});return panel;}
-        var general=Page(UiText.T("일반"));Ui.Label(general,UiText.T("앱 버전"));general.Children.Add(new TextBlock{Text=UpdateService.CurrentVersion});
+        var general=Page(UiText.T("일반"));Ui.Label(general,UiText.T("앱 언어"));var uiLanguage=Ui.Choice(new[]{"English","한국어"},current.UiLanguage=="ko"?"한국어":"English");general.Children.Add(uiLanguage);Ui.Label(general,UiText.T("앱 버전"));general.Children.Add(new TextBlock{Text=UpdateService.CurrentVersion});
         var updateStatus=new TextBlock{Text=UpdateService.RepositoryConfigured?"":UiText.T("업데이트 저장소가 설정되지 않았습니다."),TextWrapping=TextWrapping.Wrap};general.Children.Add(updateStatus);Uri? updateUrl=null;var updateLife=new CancellationTokenSource();
         var download=Ui.Button(UiText.T("업데이트 다운로드"),()=>{try{if(updateUrl!=null)UpdateService.OpenDownload(updateUrl);}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}});download.IsVisible=false;
         var updateCheck=Ui.Button(UiText.T("업데이트 확인"),async()=>{try{updateStatus.Text=UiText.T("업데이트 확인 중…");var result=await UpdateService.CheckAsync(OperatingSystem.IsMacOS(),updateLife.Token);updateUrl=result.Download;updateStatus.Text=result.Newer?(updateUrl==null?UiText.T("새 버전이 있지만 설치 파일을 찾지 못했습니다."):UiText.T("새 버전 사용 가능: ")+result.Version):UiText.T("최신 버전입니다.");download.IsVisible=result.Newer&&updateUrl!=null;}catch(OperationCanceledException){}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}});updateCheck.IsEnabled=UpdateService.RepositoryConfigured;general.Children.Add(updateCheck);general.Children.Add(download);Closed+=(_,_)=>updateLife.Cancel();
@@ -63,7 +63,7 @@ internal sealed class DesktopSettings:Window
         void Engine(){cloud.IsVisible=engine.SelectedItem as string=="OpenAI API";local.IsVisible=!cloud.IsVisible;}engine.SelectionChanged+=(_,_)=>Engine();Engine();
         Ui.Label(connection,UiText.T("Custom Instruction (선택)"));var instruction=Ui.Input(current.CustomInstruction,true);connection.Children.Add(instruction);
         Ui.Label(connection,UiText.T("중지 후 후속 작업 (Skill·MCP, 기존 Agent 승인 정책 적용)"));var workflow=Ui.Input(current.PostStopPrompt,true);connection.Children.Add(workflow);
-        var language=Page(UiText.T("언어"));Ui.Label(language,UiText.T("앱 언어"));var uiLanguage=Ui.Choice(new[]{"English","한국어"},current.UiLanguage=="ko"?"한국어":"English");language.Children.Add(uiLanguage);Ui.Label(language,UiText.T("원문 언어"));var source=Ui.Choice(Languages.Sources,Languages.Source(current.SourceLanguage));language.Children.Add(source);
+        var language=Page(UiText.T("언어"));Ui.Label(language,UiText.T("원문 언어"));var source=Ui.Choice(Languages.Sources,Languages.Source(current.SourceLanguage));language.Children.Add(source);
         Ui.Label(language,UiText.T("번역 언어"));var target=Ui.Choice(Languages.All,Languages.Target(current.TargetLanguage));language.Children.Add(target);
         Ui.Label(language,UiText.T("전문용어 (한 줄에 하나)"));var terms=Ui.Input(current.Terms,true);language.Children.Add(terms);
         var storage=Page(UiText.T("녹음·저장"));Ui.Label(storage,UiText.T("출력 장치"));var devices=AudioPlatform.Devices();var device=Ui.Choice(devices,devices.FirstOrDefault(d=>d.Id==current.DeviceId)??devices.FirstOrDefault());storage.Children.Add(device);
@@ -87,7 +87,7 @@ internal sealed class DesktopSettings:Window
             input.KeyDown+=(_,e)=>{if(e.Key==Key.Tab)return;e.Handled=true;int flags=(e.KeyModifiers.HasFlag(KeyModifiers.Control)?1:0)|(e.KeyModifiers.HasFlag(KeyModifiers.Alt)?2:0)|(e.KeyModifiers.HasFlag(KeyModifiers.Shift)?4:0)|(e.KeyModifiers.HasFlag(KeyModifiers.Meta)?8:0);try{var captured=ShortcutKeys.Capture(flags,e.Key.ToString(),OperatingSystem.IsMacOS());input.Tag=captured;input.Text=ShortcutKeys.Display(captured,OperatingSystem.IsMacOS());}catch(ArgumentException){}};
         }
         tabs.ItemsSource=pages;
-        if(openLanguageTab)tabs.SelectedIndex=2;
+        if(openLanguageTab)tabs.SelectedIndex=0;
         bool Save()
         {
             try

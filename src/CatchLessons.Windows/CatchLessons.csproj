@@ -5,15 +5,15 @@
     <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <ApplicationIcon>../../Assets/app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <Using Remove="System.Windows.Forms"/><Using Remove="System.Drawing"/><Compile Remove="Desktop/**/*.cs" />
-    <Page Remove="Desktop/**/*.xaml" />
-    <Resource Include="Assets/app.ico" />
-    <Resource Include="Assets/app-icon.png" />
-    <Content Include="Assets/Icons/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Assets/Licenses/*" CopyToOutputDirectory="PreserveNewest" />
+    <Using Remove="System.Windows.Forms"/><Using Remove="System.Drawing"/><Compile Include="../Shared/*.cs;../../tests/*.cs" />
+    <Page Include="../../Assets/Icons.xaml" Link="Assets/Icons.xaml" />
+    <Resource Include="../../Assets/app.ico" Link="Assets/app.ico" />
+    <Resource Include="../../Assets/app-icon.png" Link="Assets/app-icon.png" />
+    <Content Include="../../Assets/Icons/LICENSE.txt" Link="Assets/Icons/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../Assets/Licenses/*" Link="Assets/Licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />

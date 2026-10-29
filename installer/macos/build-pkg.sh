@@ -5,14 +5,15 @@ cd "$root"
 version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' "$root/Directory.Build.props")"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid version' >&2; exit 1; }
 case "$(uname -m)" in arm64) arch=arm64 ;; x86_64) arch=x64 ;; *) echo 'Unsupported Mac architecture' >&2; exit 1;; esac
-bash "$root/build-macos.sh"
+bash "$root/scripts/build-macos.sh"
 app="$root/artifacts/CatchLessons.app"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/catchlessons-pkg.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/app-scripts" "$tmp/model-scripts" "$tmp/root/Library/Application Support/CatchLessons/models" "$tmp/resources" "$root/artifacts/installers"
+mkdir -p "$tmp/app-scripts" "$tmp/model-scripts" "$tmp/language-ko-scripts" "$tmp/root/Library/Application Support/CatchLessons/models" "$tmp/resources" "$root/artifacts/installers"
 cp "$root/installer/macos/app-postinstall" "$tmp/app-scripts/postinstall"
 cp "$root/installer/macos/model-postinstall" "$tmp/model-scripts/postinstall"
-chmod 755 "$tmp/app-scripts/postinstall" "$tmp/model-scripts/postinstall"
+cp "$root/installer/macos/language-ko-postinstall" "$tmp/language-ko-scripts/postinstall"
+chmod 755 "$tmp/app-scripts/postinstall" "$tmp/model-scripts/postinstall" "$tmp/language-ko-scripts/postinstall"
 models="$tmp/root/Library/Application Support/CatchLessons/models"
 fetch_model() {
  local name="$1" repo="$2" hash="$3"
@@ -24,6 +25,7 @@ fetch_model ggml-silero-v6.2.0.bin ggml-org/whisper-vad 2aa269b785eeb53a82983a20
 cp "$root/installer/macos/welcome.html" "$root/Assets/installer-art.png" "$tmp/resources/"
 pkgbuild --component "$app" --install-location /Applications --scripts "$tmp/app-scripts" --identifier local.catchlessons.app --version "$version" "$tmp/app.pkg"
 pkgbuild --root "$tmp/root" --install-location / --scripts "$tmp/model-scripts" --identifier local.catchlessons.models --version "$version" "$tmp/models.pkg"
+pkgbuild --nopayload --scripts "$tmp/language-ko-scripts" --identifier local.catchlessons.language-ko --version "$version" "$tmp/language-ko.pkg"
 sed "s/@VERSION@/$version/g" "$root/installer/macos/distribution.xml" > "$tmp/distribution.xml"
 set --
 if [ -n "${CAPTION_INSTALLER_SIGN_IDENTITY:-}" ]; then set -- --sign "$CAPTION_INSTALLER_SIGN_IDENTITY"; fi

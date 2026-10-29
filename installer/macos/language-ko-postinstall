@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+root="/Library/Application Support/CatchLessons"
+/bin/mkdir -p "$root"
+/usr/bin/printf ko > "$root/install-language.txt"

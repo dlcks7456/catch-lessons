@@ -101,10 +101,16 @@ public sealed class Settings
             try{if(ShortcutKeys.Parse(shortcut,false)==ShortcutKeys.Parse(candidate,false)||ShortcutKeys.Parse(shortcut,true)==ShortcutKeys.Parse(candidate,true))return;}catch(ArgumentException){}
         Shortcuts["pauseResume"]=candidate;
     }
+    internal static string InitialUiLanguage()
+    {
+        var marker=OperatingSystem.IsMacOS()?"/Library/Application Support/CatchLessons/install-language.txt":Path.Combine(AppContext.BaseDirectory,"install-language.txt");
+        return InitialUiLanguage(marker);
+    }
+    internal static string InitialUiLanguage(string marker)=>File.Exists(marker)&&File.ReadAllText(marker).Trim()=="ko" ? "ko" : "en";
     public static Settings Load()
     {
         var path = Path.Combine(Root, "settings.json");
-        var value=File.Exists(path) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new() : new();
+        var value=File.Exists(path) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new() : new Settings { UiLanguage=InitialUiLanguage() };
         value.MigrateOutputFolder();
         if(!LocalModels.WhisperEnabled)value.SpeechEngine="openai";
         value.EnsurePauseShortcut();

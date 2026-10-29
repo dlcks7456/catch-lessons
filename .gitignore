@@ -10,3 +10,14 @@ reports/
 VERIFICATION.md
 desktop-ui-check.json
 Assets/readme-hero.png
+
+AGENTS.md
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.log
+.vs/
+.DS_Store

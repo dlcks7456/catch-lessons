@@ -79,6 +79,8 @@ public sealed class SettingsWindow : Window
         }
 
         var general=Page(UiText.T("일반"));
+        Label(general,UiText.T("앱 언어"));
+        var uiLanguage=Choice(general,new[]{new{Id="en",Name="English"},new{Id="ko",Name="한국어"}},"Name","Id",current.UiLanguage);
         Label(general,UiText.T("앱 버전"));general.Children.Add(new TextBlock{Text=UpdateService.CurrentVersion,Margin=new Thickness(0,6,0,12)});
         var updateStatus=new TextBlock{Text=UpdateService.RepositoryConfigured?"":UiText.T("업데이트 저장소가 설정되지 않았습니다."),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,8)};general.Children.Add(updateStatus);
         var updateCheck=new Button{Content=UiText.T("업데이트 확인"),IsEnabled=UpdateService.RepositoryConfigured};var updateDownload=new Button{Content=UiText.T("업데이트 다운로드"),Visibility=Visibility.Collapsed};general.Children.Add(updateCheck);general.Children.Add(updateDownload);
@@ -154,8 +156,6 @@ public sealed class SettingsWindow : Window
         agentTest.Click += async (_,_)=>await CheckAgent();
 
         var language = Page(UiText.T("언어"));
-        Label(language,UiText.T("앱 언어"));
-        var uiLanguage=Choice(language,new[]{new{Id="en",Name="English"},new{Id="ko",Name="한국어"}},"Name","Id",current.UiLanguage);
         Label(language, UiText.T("원문 언어"), UiText.T("자동 감지는 음성 구간마다 언어를 판단합니다. 알고 있는 언어를 고정하면 오인식을 줄일 수 있습니다."));
         var source = Choice(language, Languages.Sources.ToArray(), "Label", "Code", Languages.Source(current.SourceLanguage).Code);
         Label(language, UiText.T("번역 언어"), UiText.T("실시간 번역에 적용합니다. 요약 언어는 요약 탭에서 별도로 지정합니다. 언어 목록에서 글자를 입력해 해당 항목으로 이동할 수 있습니다."));
@@ -273,7 +273,7 @@ public sealed class SettingsWindow : Window
         Label(appearance, UiText.T("자막에 집중"), UiText.T("마우스를 벗어나면 조작부가 숨겨집니다. 아이콘 위에 마우스를 올리면 기능 설명이 표시됩니다."));
         Label(appearance, UiText.T("창 배치"), UiText.T("제목 영역을 끌어 이동하고 가장자리와 모서리를 끌어 크기를 조절하세요."));
         var shortcutsPage=Page(UiText.T("단축키"));
-        if(openLanguageTab)tabs.SelectedIndex=2;
+        if(openLanguageTab)tabs.SelectedIndex=0;
         Label(shortcutsPage,UiText.T("전역 단축키"),UiText.T("다른 앱을 사용하거나 트레이에 숨겨도 동작합니다. Ctrl, Alt 또는 Win 조합을 입력하세요. Backspace/Delete로 해제합니다. 다른 앱과 충돌한 키는 실행되지 않습니다."));
         var shortcutError=new TextBlock{TextWrapping=TextWrapping.Wrap,Foreground=Brushes.IndianRed,Margin=new Thickness(0,4,0,8)};shortcutsPage.Children.Add(shortcutError);
         var shortcutInputs=new Dictionary<string,TextBox>();

@@ -26,16 +26,13 @@ Summaries and translations share the recording's agent conversation. A manual su
 
 ## 📦 Download and install
 
-| Platform | Status | Prerequisites |
+| Platform | Installer | Status |
 | --- | --- | --- |
-| Windows x64 | Installer built; isolated install, engine checks, and uninstall passed for API-only and Whisper configurations | Windows, and a signed-in Codex CLI or Claude Code CLI |
-| macOS 14+ | Apple Silicon and Intel packages built on GitHub Actions; **installation and app behavior untested** | macOS 14+, screen/audio capture permission, and a signed-in agent CLI |
+| Windows x64 | [Download .exe](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-Windows-x64-1.0.1.exe) | Installation wizard; uninstall via Windows Settings |
+| macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-macOS-arm64-1.0.1.pkg) | Experimental; real-device installation untested |
+| macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-macOS-x64-1.0.1.pkg) | Experimental; real-device installation untested |
 
-**Windows:** [Download the CatchLessons installer (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-Windows-x64-1.0.0.exe). Open the downloaded file and follow the installation wizard; no source-code build is required.
-
-**Uninstall on Windows:** Open **Settings → Apps → Installed apps**, find **CatchLessons**, and select **Uninstall**. Your recordings and settings are retained.
-
-**macOS (experimental):** Download [Apple Silicon (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-macOS-arm64-1.0.0.pkg) or [Intel (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.0/CatchLessons-macOS-x64-1.0.0.pkg). Open the package to use the macOS installer. These packages are unsigned and unnotarized, so macOS security settings may prevent installation; real-device installation and app behavior remain unverified.
+Open the downloaded installer and follow its instructions. Codex CLI or Claude Code must be installed and signed in separately. On Windows, uninstall via **Settings → Apps → Installed apps → CatchLessons**; recordings and settings are retained.
 
 During installation, **local Whisper is selected by default**. Deselecting it makes the installation OpenAI-API-only; enter an API key in Connection settings. The installer bundles the .NET runtime and, when selected, the default Whisper and VAD models. The installer checks for agent executables and explains that sign-in is still required; it does not install or log in to an agent for you.
 
@@ -95,7 +92,7 @@ The app version and installer version come from `Directory.Build.props`. The rep
 Requires .NET 10 SDK, Inno Setup 6 and network access if the model files are not already available:
 
 ```powershell
-./build.ps1
+./scripts/build.ps1
 ./scripts/build-windows-installer.ps1
 ```
 
