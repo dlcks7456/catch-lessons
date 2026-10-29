@@ -28,9 +28,9 @@ Summaries and translations share the recording's agent conversation. A manual su
 
 | Platform | Installer | Status |
 | --- | --- | --- |
-| Windows x64 | [Download .exe](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-Windows-x64-1.0.1.exe) | Installation wizard; uninstall via Windows Settings |
-| macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-macOS-arm64-1.0.1.pkg) | Experimental; real-device installation untested |
-| macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-macOS-x64-1.0.1.pkg) | Experimental; real-device installation untested |
+| Windows x64 | [Download .exe](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-Windows-x64-1.0.2.exe) | Installation wizard; uninstall via Windows Settings |
+| macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-arm64-1.0.2.pkg) | Experimental; real-device installation untested |
+| macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-x64-1.0.2.pkg) | Experimental; real-device installation untested |
 
 Open the downloaded installer and follow its instructions. Codex CLI or Claude Code must be installed and signed in separately. On Windows, uninstall via **Settings → Apps → Installed apps → CatchLessons**; recordings and settings are retained.
 

@@ -28,9 +28,9 @@ PC에서 재생되는 소리를 받아 원문과 선택적인 번역을 플로�
 
 | 플랫폼 | 설치 파일 | 상태 |
 | --- | --- | --- |
-| Windows x64 | [설치 파일 다운로드 (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-Windows-x64-1.0.1.exe) | 설치 마법사 제공, Windows 설정에서 제거 가능 |
-| macOS 14+ · Apple Silicon | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-macOS-arm64-1.0.1.pkg) | 시험판, 실기기 설치 미검증 |
-| macOS 14+ · Intel | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.1/CatchLessons-macOS-x64-1.0.1.pkg) | 시험판, 실기기 설치 미검증 |
+| Windows x64 | [설치 파일 다운로드 (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-Windows-x64-1.0.2.exe) | 설치 마법사 제공, Windows 설정에서 제거 가능 |
+| macOS 14+ · Apple Silicon | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-arm64-1.0.2.pkg) | 시험판, 실기기 설치 미검증 |
+| macOS 14+ · Intel | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-x64-1.0.2.pkg) | 시험판, 실기기 설치 미검증 |
 
 다운로드한 설치 파일을 실행하고 안내에 따라 설치하세요. Codex CLI 또는 Claude Code는 별도 설치 및 로그인이 필요합니다. Windows에서는 **설정 → 앱 → 설치된 앱 → CatchLessons → 제거**로 삭제할 수 있으며 녹음과 설정은 유지됩니다.
 
