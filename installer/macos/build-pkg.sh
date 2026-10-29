@@ -11,6 +11,7 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/catchlessons-pkg.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/app-scripts" "$tmp/model-scripts" "$tmp/language-ko-scripts" "$tmp/root/Library/Application Support/CatchLessons/models" "$tmp/resources" "$root/artifacts/installers"
 cp "$root/installer/macos/app-postinstall" "$tmp/app-scripts/postinstall"
+cp "$root/installer/macos/whisper-detection.sh" "$tmp/app-scripts/whisper-detection.sh"
 cp "$root/installer/macos/model-postinstall" "$tmp/model-scripts/postinstall"
 cp "$root/installer/macos/language-ko-postinstall" "$tmp/language-ko-scripts/postinstall"
 chmod 755 "$tmp/app-scripts/postinstall" "$tmp/model-scripts/postinstall" "$tmp/language-ko-scripts/postinstall"
@@ -22,6 +23,7 @@ fetch_model() {
 }
 fetch_model ggml-large-v3-turbo-q5_0.bin ggerganov/whisper.cpp 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
 fetch_model ggml-silero-v6.2.0.bin ggml-org/whisper-vad 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
+bash "$root/tests/macos-whisper-reinstall.sh" "$root/installer/macos/whisper-detection.sh" "$models/ggml-large-v3-turbo-q5_0.bin"
 cp "$root/installer/macos/welcome.html" "$root/Assets/installer-art.png" "$tmp/resources/"
 pkgbuild --component "$app" --install-location /Applications --scripts "$tmp/app-scripts" --identifier local.catchlessons.app --version "$version" "$tmp/app.pkg"
 pkgbuild --root "$tmp/root" --install-location / --scripts "$tmp/model-scripts" --identifier local.catchlessons.models --version "$version" "$tmp/models.pkg"

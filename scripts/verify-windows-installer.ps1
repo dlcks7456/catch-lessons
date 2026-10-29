@@ -8,7 +8,7 @@ if(Test-Path -LiteralPath $existing){throw 'An existing CatchLessons installatio
 $settings=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'CaptionGlass/settings.json'
 $before=if(Test-Path -LiteralPath $settings){(Get-FileHash -LiteralPath $settings -Algorithm SHA256).Hash}else{$null}
 $results=@()
-foreach($task in @('api','whisper')){
+foreach($task in @('api','whisper','reuse')){
  $target=Join-Path $root ('installer-verify-'+[Guid]::NewGuid().ToString('N'))
  $absolute=[IO.Path]::GetFullPath($target)
  if(-not $absolute.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path -LiteralPath $absolute)){throw 'Invalid or existing verification target'}
@@ -20,15 +20,25 @@ foreach($task in @('api','whisper')){
   if($install.ExitCode -ne 0){$detail=if(Test-Path -LiteralPath $log){(Get-Content -LiteralPath $log -Tail 15)-join "`n"}else{"No installer log."};throw "Install failed ($task): $($install.ExitCode)`n$detail"}
   $resolved=(Resolve-Path -LiteralPath $absolute).Path
   if($resolved -ne $absolute -or -not $resolved.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Installed target failed path verification'}
+  if($task -eq 'reuse'){
+   $recording=Join-Path $resolved 'recording-fixture.txt';[IO.File]::WriteAllText($recording,'recording must remain')
+   $fixtureSettings=Join-Path $resolved 'settings-fixture.json';[IO.File]::WriteAllText($fixtureSettings,'{"speechEngine":"whisper"}')
+   $modelPath=Join-Path $resolved 'models/ggml-large-v3-turbo-q5_0.bin';$modelBefore=(Get-FileHash -LiteralPath $modelPath -Algorithm SHA256).Hash
+   $reinstallArgs=@('/CURRENTUSER','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS','/NOCLOSEAPPLICATIONS','/TASKS=!whisper',('/DIR='+$absolute))
+   $reinstall=Start-Process -FilePath $setup -ArgumentList $reinstallArgs -WindowStyle Hidden -PassThru -Wait
+   if($reinstall.ExitCode -ne 0){throw 'Reinstall without Whisper failed'}
+   if((Get-Content -LiteralPath $recording -Raw) -ne 'recording must remain' -or (Get-Content -LiteralPath $fixtureSettings -Raw) -ne '{"speechEngine":"whisper"}'){throw 'Reinstall changed recording or settings fixture'}
+   if((Get-FileHash -LiteralPath $modelPath -Algorithm SHA256).Hash -ne $modelBefore){throw 'Reinstall changed existing Whisper model'}
+  }
   $marker=Test-Path -LiteralPath (Join-Path $resolved 'whisper-disabled.flag')
   $model=Test-Path -LiteralPath (Join-Path $resolved 'models/ggml-large-v3-turbo-q5_0.bin')
-  if(($task -eq 'api' -and (-not $marker -or $model)) -or ($task -eq 'whisper' -and ($marker -or -not $model))){throw "Install selection failed: $task"}
+  if(($task -eq 'api' -and (-not $marker -or $model)) -or ($task -ne 'api' -and ($marker -or -not $model))){throw "Install selection failed: $task"}
   if($model -and (Get-FileHash -LiteralPath (Join-Path $resolved 'models/ggml-large-v3-turbo-q5_0.bin') -Algorithm SHA256).Hash -ne '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2'){throw 'Installed Whisper checksum mismatch'}
   $diagnostic=Join-Path $root ('install-mode-'+$task+'.json')
   $app=Start-Process -FilePath (Join-Path $resolved 'CatchLessons.exe') -ArgumentList '--install-mode-test',$diagnostic -WorkingDirectory $PWD -WindowStyle Hidden -PassThru -Wait
   if($app.ExitCode -ne 0){throw "Installed app diagnostic failed: $task"}
   $result=Get-Content -LiteralPath $diagnostic -Raw | ConvertFrom-Json
-  if(($task -eq 'api' -and -not $result.apiOnly) -or ($task -eq 'whisper' -and -not $result.whisperEnabled)){throw "Installed engine setting incorrect: $task"}
+  if(($task -eq 'api' -and -not $result.apiOnly) -or ($task -ne 'api' -and -not $result.whisperEnabled)){throw "Installed engine setting incorrect: $task"}
   $results+=@{mode=$task;passed=$true;modelIncluded=$model;apiOnly=$result.apiOnly;userSettingsUnchanged=$true;target=$resolved}
  } finally {
   if(Test-Path -LiteralPath $absolute){

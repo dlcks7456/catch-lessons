@@ -15,7 +15,9 @@ public static class LocalModels
     public static readonly LocalModel Vad = new("vad", "말소리 구간 검출", "ggml-silero-v6.2.0.bin", 885098,
         "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987", "ggml-org/whisper-vad");
     public static string Folder => Path.Combine(OperatingSystem.IsMacOS()?Settings.Root:AppContext.BaseDirectory, "models");
-    public static bool WhisperEnabled=>WhisperEnabledAt(AppContext.BaseDirectory)&&(!OperatingSystem.IsMacOS()||WhisperEnabledAt("/Library/Application Support/CatchLessons"));
+    internal static bool HasAnyExistingModel=>HasExistingModel(Folder)||(OperatingSystem.IsMacOS()&&HasExistingModel("/Library/Application Support/CatchLessons/models"));
+    public static bool WhisperEnabled=>(WhisperEnabledAt(AppContext.BaseDirectory)&&(!OperatingSystem.IsMacOS()||WhisperEnabledAt("/Library/Application Support/CatchLessons")))||HasAnyExistingModel;
+    internal static bool HasExistingModel(string folder)=>Choices.Any(model=>{var path=Path.Combine(folder,model.File);try{return File.Exists(path)&&new FileInfo(path).Length==model.Bytes;}catch(IOException){return false;}catch(UnauthorizedAccessException){return false;}});
     internal static bool WhisperEnabledAt(string directory)=>!File.Exists(Path.Combine(directory,"whisper-disabled.flag"));
     public static LocalModel Resolve(string id) => Choices.FirstOrDefault(m => m.Id == id) ?? Choices[0];
     public static async Task<bool> ValidAsync(string path, LocalModel model, CancellationToken token)

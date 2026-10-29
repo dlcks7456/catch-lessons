@@ -4,6 +4,10 @@ namespace CatchLessons;
 
 internal static class FeatureTests
 {
+    private sealed class UpdateResponse:HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)=>Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK){Content=new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("test-update"))});
+    }
     public static async Task<string> RunAsync()
     {
         int passed=0;void Check(bool result,string message){if(!result)throw new Exception(message);passed++;}
@@ -13,6 +17,14 @@ internal static class FeatureTests
         Check(!UpdateService.Parse("acme/caption",release,"1.2.0",false).Newer&&UpdateService.Parse("acme/caption",release,"1.0.0",true,"x64").Download==null,"Up-to-date version and missing architecture are reported correctly");
         Check(UpdateService.NormalizeRepository("https://github.com/acme/caption/")=="acme/caption"&&UpdateService.NormalizeRepository("acme/caption")=="acme/caption"&&UpdateService.NormalizeRepository("https://github.com.evil.example/acme/caption")==null&&UpdateService.NormalizeRepository("http://github.com/acme/caption")==null,"Build setting accepts only a GitHub repository address");
         Check(UpdateService.NormalizeRepository("")==null,"Empty build repository remains unconfigured");
+        var digest="sha256:"+new string('a',64);var withDigest=release.Replace("\"name\":\"CatchLessons-Windows-x64.exe\"", "\"digest\":\""+digest+"\",\"name\":\"CatchLessons-Windows-x64.exe\"");
+        Check(UpdateService.Parse("acme/caption",withDigest,"1.0.0",false).Sha256==new string('a',64),"Release SHA-256 is extracted for update verification");
+        bool missingDigest=false;try{await UpdateService.DownloadAsync(UpdateService.Parse("acme/caption",release,"1.0.0",false),new Progress<int?>(),CancellationToken.None);}catch(IOException){missingDigest=true;}Check(missingDigest,"Update without SHA-256 is rejected before download");
+        var payload=System.Text.Encoding.UTF8.GetBytes("test-update");var payloadDigest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload));
+        var fixture=new UpdateResult("v1.2.0",new Uri("https://github.com/acme/caption/releases/download/v1.2.0/test.exe"),true,payloadDigest);
+        var downloaded=await UpdateService.DownloadAsync(fixture,new Progress<int?>(),CancellationToken.None,new UpdateResponse());Check(File.ReadAllBytes(downloaded).SequenceEqual(payload),"Verified update is downloaded correctly");File.Delete(downloaded);
+        bool invalidDigest=false;try{await UpdateService.DownloadAsync(fixture with{Sha256=new string('0',64)},new Progress<int?>(),CancellationToken.None,new UpdateResponse());}catch(IOException){invalidDigest=true;}Check(invalidDigest,"Corrupted update is rejected");
+        Check(UpdateService.WindowsInstallerArguments(@"C:\Program Files\CatchLessons",false).Contains("/TASKS=!whisper")&&UpdateService.WindowsInstallerArguments(@"C:\Program Files\CatchLessons",true).Contains("/TASKS=whisper")&&UpdateService.WindowsInstallerArguments(@"C:\Program Files\CatchLessons",true).Contains(@"/DIR=C:\Program Files\CatchLessons"),"Update preserves installation location and speech engine choice");
         if(!UpdateService.RepositoryConfigured){bool unconfigured=false;try{await UpdateService.CheckAsync(false,CancellationToken.None);}catch(InvalidOperationException){unconfigured=true;}Check(unconfigured,"Missing build repository rejects update checks before network access");}
         var oldSettings=JsonSerializer.Deserialize<Settings>("{\"UpdateRepository\":\"untrusted/legacy-value\"}")!;
         Check(typeof(Settings).GetProperty("UpdateRepository")==null&&!JsonSerializer.Serialize(oldSettings).Contains("UpdateRepository"),"Legacy user settings cannot override the build repository");
@@ -92,6 +104,7 @@ internal static class FeatureTests
         for(int i=1;i<=100;i++)rawQueue.Writer.TryWrite(new(i,"queued-"+i,i,i+1,"queued"));bool overflowReported=false;overflowSession.Failed+=_=>overflowReported=true;
         overflowSession.OnRawTranscript(new(101,"overflow",101,102,"Do not lose this text"));
         Check(overflowReported&&overflowStore.Read().Any(c=>c.Id==101&&c.Original=="Do not lose this text"),"Full transcription queue preserves the final recognized text");await overflowSession.StopAsync();
+        await File.WriteAllTextAsync(Path.Combine(folder,LocalModels.Choices[0].File),"invalid");Check(!LocalModels.HasExistingModel(folder),"A truncated model is not treated as installed");File.Delete(Path.Combine(folder,LocalModels.Choices[0].File));
         Check(LocalModels.WhisperEnabledAt(folder),"Whisper enabled by default");await File.WriteAllTextAsync(Path.Combine(folder,"whisper-disabled.flag"),"");Check(!LocalModels.WhisperEnabledAt(folder),"API-only installation disables Whisper");
         var fake=Path.Combine(folder,"fake-cli.js");await File.WriteAllTextAsync(fake,"""
             const fs=require('fs');const args=process.argv.slice(2);fs.appendFileSync('calls.jsonl',JSON.stringify(args)+'\n');let input='';process.stdin.on('data',x=>input+=x);process.stdin.on('end',()=>{

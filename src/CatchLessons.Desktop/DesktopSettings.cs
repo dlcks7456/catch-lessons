@@ -15,6 +15,7 @@ namespace CatchLessons.Desktop;
 internal sealed class DesktopSettings:Window
 {
     public bool LanguageChanged {get;private set;}
+    public bool UpdateStarted {get;private set;}
     public DesktopSettings(Settings current,bool openLanguageTab=false)
     {
         UiText.Language=current.UiLanguage;
@@ -26,9 +27,11 @@ internal sealed class DesktopSettings:Window
         var tabs=new TabControl();root.Children.Add(tabs);var pages=new List<TabItem>();
         StackPanel Page(string name){var panel=new StackPanel{Spacing=4};pages.Add(new(){Header=name,Content=new ScrollViewer{Content=panel}});return panel;}
         var general=Page(UiText.T("일반"));Ui.Label(general,UiText.T("앱 언어"));var uiLanguage=Ui.Choice(new[]{"English","한국어"},current.UiLanguage=="ko"?"한국어":"English");general.Children.Add(uiLanguage);Ui.Label(general,UiText.T("앱 버전"));general.Children.Add(new TextBlock{Text=UpdateService.CurrentVersion});
-        var updateStatus=new TextBlock{Text=UpdateService.RepositoryConfigured?"":UiText.T("업데이트 저장소가 설정되지 않았습니다."),TextWrapping=TextWrapping.Wrap};general.Children.Add(updateStatus);Uri? updateUrl=null;var updateLife=new CancellationTokenSource();
-        var download=Ui.Button(UiText.T("업데이트 다운로드"),()=>{try{if(updateUrl!=null)UpdateService.OpenDownload(updateUrl);}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}});download.IsVisible=false;
-        var updateCheck=Ui.Button(UiText.T("업데이트 확인"),async()=>{try{updateStatus.Text=UiText.T("업데이트 확인 중…");var result=await UpdateService.CheckAsync(OperatingSystem.IsMacOS(),updateLife.Token);updateUrl=result.Download;updateStatus.Text=result.Newer?(updateUrl==null?UiText.T("새 버전이 있지만 설치 파일을 찾지 못했습니다."):UiText.T("새 버전 사용 가능: ")+result.Version):UiText.T("최신 버전입니다.");download.IsVisible=result.Newer&&updateUrl!=null;}catch(OperationCanceledException){}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}});updateCheck.IsEnabled=UpdateService.RepositoryConfigured;general.Children.Add(updateCheck);general.Children.Add(download);Closed+=(_,_)=>updateLife.Cancel();
+        var updateStatus=new TextBlock{Text=UpdateService.RepositoryConfigured?"":UiText.T("업데이트 저장소가 설정되지 않았습니다."),TextWrapping=TextWrapping.Wrap};general.Children.Add(updateStatus);UpdateResult? update=null;Func<bool> saveBeforeUpdate=()=>false;var updateLife=new CancellationTokenSource();bool installingUpdate=false;Closing+=(_,e)=>{if(installingUpdate)e.Cancel=true;};
+        var updateProgress=new ProgressBar{Minimum=0,Maximum=100,Height=4,IsVisible=false};
+        Button download=null!,updateCheck=null!;download=Ui.Button(UiText.T("업데이트"),downloadUpdate);download.IsVisible=false;
+        async void downloadUpdate(){download.IsEnabled=false;updateCheck.IsEnabled=false;updateProgress.IsVisible=true;updateProgress.IsIndeterminate=true;try{if(!saveBeforeUpdate())throw new IOException("Could not save settings before updating.");if(OperatingSystem.IsMacOS())UpdateService.EnsureMacInstalled();else UpdateService.WindowsInstallLocation();updateStatus.Text=UiText.T("업데이트 준비 중…");var progress=new Progress<int?>(n=>{updateProgress.IsIndeterminate=!n.HasValue;if(n.HasValue)updateProgress.Value=n.Value;updateStatus.Text=UiText.T("업데이트 준비 중…")+(n.HasValue?" "+n+"%":"");});var path=await UpdateService.DownloadAsync(update!,progress,updateLife.Token);updateProgress.IsIndeterminate=true;updateStatus.Text=UiText.T("업데이트 설치 시작 중…");if(OperatingSystem.IsMacOS()){updateStatus.Text=UiText.T("관리자 인증과 설치를 기다리는 중…");installingUpdate=true;try{await UpdateService.InstallMacAsync(path);}finally{installingUpdate=false;}}else UpdateService.StartWindowsInstaller(path);UpdateStarted=true;Close();}catch(OperationCanceledException){}catch(Exception ex){updateProgress.IsVisible=false;updateStatus.Text=UiText.T("업데이트 실패: ")+ex.Message;download.IsEnabled=true;updateCheck.IsEnabled=UpdateService.RepositoryConfigured;}}
+        updateCheck=Ui.Button(UiText.T("업데이트 확인"),async()=>{try{updateStatus.Text=UiText.T("업데이트 확인 중…");update=await UpdateService.CheckAsync(OperatingSystem.IsMacOS(),updateLife.Token);updateStatus.Text=update.Newer?(update.Download==null?UiText.T("새 버전이 있지만 설치 파일을 찾지 못했습니다."):UiText.T("새 버전 사용 가능: ")+update.Version):UiText.T("최신 버전입니다.");download.IsVisible=update.Newer&&update.Download!=null;}catch(OperationCanceledException){}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}});updateCheck.IsEnabled=UpdateService.RepositoryConfigured;general.Children.Add(updateCheck);general.Children.Add(download);general.Children.Add(updateProgress);Closed+=(_,_)=>updateLife.Cancel();
         var connection=Page(UiText.T("연결"));Ui.Label(connection,"Agent");
         var agent=Ui.Choice(new[]{"ChatGPT","Claude"},current.AgentProvider=="claude"?"Claude":"ChatGPT");connection.Children.Add(agent);
         agent.ItemTemplate=new Avalonia.Controls.Templates.FuncDataTemplate<string>((name,_)=>new StackPanel{Orientation=Orientation.Horizontal,Spacing=8,Children={new PathIcon{Data=Ui.Symbol(name=="Claude"?"brand-claude":"brand-openai"),Width=18,Height=18},new TextBlock{Text=name}}});
@@ -105,6 +108,7 @@ internal sealed class DesktopSettings:Window
             }
             catch(Exception ex){status.Text=UiText.Status(ex.Message);return false;}
         }
+        saveBeforeUpdate=Save;
         var saveGate=new SettingsSaveGate();var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(700)};void Schedule(){if(!IsVisible)return;timer.Stop();timer.Start();}
         uiLanguage.SelectionChanged+=(_,_)=>{if(!IsVisible||((uiLanguage.SelectedItem as string=="한국어")==(current.UiLanguage=="ko")))return;if(Save()){LanguageChanged=true;Close();}};
         bool DropdownOpen()=>root.GetVisualDescendants().OfType<ComboBox>().Any(c=>c.IsDropDownOpen);

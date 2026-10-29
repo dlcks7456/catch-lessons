@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <!-- Set to owner/repository or https://github.com/owner/repository when the release repository exists. -->
     <CatchLessonsUpdateRepository Condition="'$(CatchLessonsUpdateRepository)' == ''">dlcks7456/catch-lessons</CatchLessonsUpdateRepository>
   </PropertyGroup>

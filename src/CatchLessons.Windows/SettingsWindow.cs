@@ -23,6 +23,7 @@ public sealed class SettingsWindow : Window
     public Settings Value { get; private set; }
     public string? VerifiedAgentKey { get; private set; }
     public bool LanguageChanged {get;private set;}
+    public bool UpdateStarted {get;private set;}
     public SettingsWindow(Settings current,bool openLanguageTab=false)
     {
         Value = JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(current))!;UiText.Language=current.UiLanguage;
@@ -83,10 +84,10 @@ public sealed class SettingsWindow : Window
         var uiLanguage=Choice(general,new[]{new{Id="en",Name="English"},new{Id="ko",Name="한국어"}},"Name","Id",current.UiLanguage);
         Label(general,UiText.T("앱 버전"));general.Children.Add(new TextBlock{Text=UpdateService.CurrentVersion,Margin=new Thickness(0,6,0,12)});
         var updateStatus=new TextBlock{Text=UpdateService.RepositoryConfigured?"":UiText.T("업데이트 저장소가 설정되지 않았습니다."),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,4,0,8)};general.Children.Add(updateStatus);
-        var updateCheck=new Button{Content=UiText.T("업데이트 확인"),IsEnabled=UpdateService.RepositoryConfigured};var updateDownload=new Button{Content=UiText.T("업데이트 다운로드"),Visibility=Visibility.Collapsed};general.Children.Add(updateCheck);general.Children.Add(updateDownload);
-        Uri? updateUrl=null;var updateLife=new CancellationTokenSource();
-        updateCheck.Click+=async(_,_)=>{updateCheck.IsEnabled=false;updateDownload.Visibility=Visibility.Collapsed;try{updateStatus.Text=UiText.T("업데이트 확인 중…");var result=await UpdateService.CheckAsync(false,updateLife.Token);updateUrl=result.Download;updateStatus.Text=result.Newer?(updateUrl==null?UiText.T("새 버전이 있지만 설치 파일을 찾지 못했습니다."):UiText.T("새 버전 사용 가능: ")+result.Version):UiText.T("최신 버전입니다.");updateDownload.Visibility=result.Newer&&updateUrl!=null?Visibility.Visible:Visibility.Collapsed;}catch(OperationCanceledException){}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}finally{updateCheck.IsEnabled=UpdateService.RepositoryConfigured;}};
-        updateDownload.Click+=(_,_)=>{try{if(updateUrl!=null)UpdateService.OpenDownload(updateUrl);}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}};
+        var updateCheck=new Button{Content=UiText.T("업데이트 확인"),IsEnabled=UpdateService.RepositoryConfigured};var updateDownload=new Button{Content=UiText.T("업데이트"),Visibility=Visibility.Collapsed};general.Children.Add(updateCheck);general.Children.Add(updateDownload);
+        UpdateResult? update=null;Func<bool> saveBeforeUpdate=()=>false;var updateLife=new CancellationTokenSource();var updateProgress=new ProgressBar{Minimum=0,Maximum=100,Height=4,Visibility=Visibility.Collapsed};general.Children.Add(updateProgress);
+        updateCheck.Click+=async(_,_)=>{updateCheck.IsEnabled=false;updateDownload.Visibility=Visibility.Collapsed;try{updateStatus.Text=UiText.T("업데이트 확인 중…");update=await UpdateService.CheckAsync(false,updateLife.Token);updateStatus.Text=update.Newer?(update.Download==null?UiText.T("새 버전이 있지만 설치 파일을 찾지 못했습니다."):UiText.T("새 버전 사용 가능: ")+update.Version):UiText.T("최신 버전입니다.");updateDownload.Visibility=update.Newer&&update.Download!=null?Visibility.Visible:Visibility.Collapsed;}catch(OperationCanceledException){}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}finally{updateCheck.IsEnabled=UpdateService.RepositoryConfigured;}};
+        updateDownload.Click+=async(_,_)=>{updateCheck.IsEnabled=false;updateDownload.IsEnabled=false;updateProgress.Visibility=Visibility.Visible;updateProgress.IsIndeterminate=true;try{UpdateService.WindowsInstallLocation();updateStatus.Text=UiText.T("업데이트 준비 중…");var progress=new Progress<int?>(n=>{updateProgress.IsIndeterminate=!n.HasValue;if(n.HasValue)updateProgress.Value=n.Value;updateStatus.Text=UiText.T("업데이트 준비 중…")+(n.HasValue?" "+n+"%":"");});var path=await UpdateService.DownloadAsync(update!,progress,updateLife.Token);updateProgress.IsIndeterminate=true;updateStatus.Text=UiText.T("업데이트 설치 시작 중…");if(!saveBeforeUpdate())throw new IOException("Could not save settings before updating.");UpdateService.StartWindowsInstaller(path);UpdateStarted=true;Close();}catch(OperationCanceledException){}catch(Exception ex){updateProgress.Visibility=Visibility.Collapsed;updateStatus.Text=UiText.T("업데이트 실패: ")+ex.Message;updateCheck.IsEnabled=true;updateDownload.IsEnabled=true;}};
         var connection = Page(UiText.T("연결"));
         Label(connection, "Agent", UiText.T("녹음마다 새로운 대화를 만들고, 그 안에서 번역과 요약을 이어갑니다. 선택하면 실제 응답으로 연결을 확인합니다."));
         var agentPicker = Choice(connection, new[] { new { Id="chatgpt", Name="ChatGPT", Icon=FindResource("Icon-brand-openai") }, new { Id="claude", Name="Claude", Icon=FindResource("Icon-brand-claude") } }, "", "Id", current.AgentProvider);
@@ -341,6 +342,7 @@ public sealed class SettingsWindow : Window
         bool interactive=false;var saveGate=new SettingsSaveGate();
         uiLanguage.SelectionChanged+=(_,_)=>{if(!interactive||uiLanguage.SelectedValue as string==current.UiLanguage)return;if(Persist(false)){LanguageChanged=true;Close();}};
         Loaded+=(_,_)=>{if(IsVisible){interactive=true;CheckShortcuts();}};
+        saveBeforeUpdate=()=>Persist(false);
         var autosave=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMilliseconds(700)};
         void Schedule(){if(!interactive)return;autosave.Stop();autosave.Start();}
         bool TextFocused()=>Keyboard.FocusedElement is TextBox or PasswordBox;

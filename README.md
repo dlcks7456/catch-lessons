@@ -34,7 +34,7 @@ Summaries and translations share the recording's agent conversation. A manual su
 
 Open the downloaded installer and follow its instructions. Codex CLI or Claude Code must be installed and signed in separately. On Windows, uninstall via **Settings → Apps → Installed apps → CatchLessons**; recordings and settings are retained.
 
-During installation, **local Whisper is selected by default**. Deselecting it makes the installation OpenAI-API-only; enter an API key in Connection settings. The installer bundles the .NET runtime and, when selected, the default Whisper and VAD models. The installer checks for agent executables and explains that sign-in is still required; it does not install or log in to an agent for you.
+During installation, **local Whisper is selected by default**. If no local model already exists, deselecting it makes the installation OpenAI-API-only; enter an API key in Connection settings. A valid existing Whisper model is reused when reinstalling, and the saved speech-engine setting is preserved. The installer bundles the .NET runtime and, when selected, the default Whisper and VAD models. The installer checks for agent executables and explains that sign-in is still required; it does not install or log in to an agent for you.
 
 The Windows installer is currently **unsigned**, so Windows reputation checks may warn. The Mac build scripts produce unsigned/ad-hoc artifacts by default; public Mac distribution needs Developer ID signing and notarization. Mac installation, capture, Keychain, and shortcuts have not been verified on a Mac.
 
@@ -78,7 +78,7 @@ A configured post-recording workflow can intentionally create other files. Exist
 
 ## 🔄 Updates
 
-The build checks GitHub Releases at `dlcks7456/catch-lessons` from **Settings → General**.  Users can then check for a newer compatible installer and open its download in the browser. Run the downloaded installer yourself; the app does not silently download or execute it. Private GitHub Releases are not supported.
+The build checks GitHub Releases at `dlcks7456/catch-lessons` from **Settings → General**. In a build with automatic updates, **Update** downloads and verifies the installer in the background, then installs it. Windows shows installation progress; macOS requests administrator authentication. Existing releases need a one-time manual upgrade to get this feature. Private GitHub Releases are not supported.
 
 The app version and installer version come from `Directory.Build.props`. The repository can run `.github/workflows/build-installers.yml` manually to build artifacts; it does not publish a release automatically. The installer workflow has run on GitHub Actions; the Mac packages have not been tested on a physical Mac.
 

@@ -364,6 +364,7 @@ public partial class MainWindow : Window
         {
             var dialog = new SettingsWindow(settings,reopen) { Owner = this };
             dialog.ShowDialog();reopen=dialog.LanguageChanged;
+            if(dialog.UpdateStarted){ExitFromTray();return;}
             settings = Settings.Load();
             UiText.Language=settings.UiLanguage;WpfLocalizer.Apply(this);(Application.Current as App)?.RefreshTrayLanguage();
             ThemeManager.Apply(settings.Theme);

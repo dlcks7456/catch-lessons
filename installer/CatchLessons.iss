@@ -53,7 +53,28 @@ Type: files; Name: "{app}\whisper-disabled.flag"
 Type: files; Name: "{app}\install-language.txt"
 [Run]
 Filename: "{app}\CatchLessons.exe"; Description: "Launch CatchLessons"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\CatchLessons.exe"; Flags: nowait skipifnotsilent; Check: IsAutomaticUpdate
 [Code]
+function IsAutomaticUpdate: Boolean;
+var I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/AUTOMATICUPDATE') = 0 then Result := True;
+end;
+function HasExistingWhisper: Boolean;
+var P: String;
+begin
+  Result := False;
+  P := ExpandConstant('{app}\models\ggml-large-v3-turbo-q5_0.bin');
+  if FileExists(P) then if CompareText(GetSHA256OfFile(P), '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2') = 0 then Result := True;
+  if Result then Exit;
+  P := ExpandConstant('{app}\models\ggml-small-q5_1.bin');
+  if FileExists(P) then if CompareText(GetSHA256OfFile(P), 'ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb') = 0 then Result := True;
+  if Result then Exit;
+  P := ExpandConstant('{app}\models\ggml-large-v3-q5_0.bin');
+  if FileExists(P) then if CompareText(GetSHA256OfFile(P), 'd75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1') = 0 then Result := True;
+end;
 function IsAgentFound(Name: String): Boolean;
 var Paths, Part, Candidate: String; P: Integer;
 begin
@@ -85,7 +106,7 @@ begin
       if not SaveStringToFile(ExpandConstant('{app}\install-language.txt'), CodeStatus, False) then RaiseException('Cannot save installer language.');
     end;
     Marker := ExpandConstant('{app}\whisper-disabled.flag');
-    if WizardIsTaskSelected('whisper') then begin if FileExists(Marker) then DeleteFile(Marker); end
+    if WizardIsTaskSelected('whisper') or HasExistingWhisper then begin if FileExists(Marker) then DeleteFile(Marker); end
     else if not SaveStringToFile(Marker, 'API-only installation', False) then RaiseException('Cannot save speech engine selection.');
   end;
 end;
