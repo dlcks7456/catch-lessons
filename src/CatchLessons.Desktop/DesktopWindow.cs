@@ -34,7 +34,7 @@ internal sealed class DesktopWindow:Window
     private readonly Border agentWarning=new(){IsVisible=false,Padding=new Thickness(14),CornerRadius=new CornerRadius(10),Background=Brush.Parse("#503C35"),HorizontalAlignment=HorizontalAlignment.Stretch,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(20,135,20,0)};
     private readonly TextBlock agentWarningText=new(){TextWrapping=TextWrapping.Wrap};
     private readonly CheckBox summarize=new(){Content=UiText.T("요약"),Width=45};
-    private readonly Button start,pause,openCodexSession;
+    private readonly Button start,pause,openAgentSession;
     private readonly Border shell=new(){Padding=new Thickness(18),CornerRadius=new CornerRadius(18)};
     private double shownThrough,previewEnd;
     public bool BackgroundEnabled {get;set;}
@@ -66,7 +66,7 @@ internal sealed class DesktopWindow:Window
         topic=Ui.Input(settings.Topic);topic.PlaceholderText=UiText.T("주제 힌트");topic.Margin=new Thickness(0,5,0,12);Grid.SetColumn(topic,4);languages.Children.Add(topic);
         topic.LostFocus+=(_,_)=>{if(loading||busy||session!=null)return;settings.Topic=topic.Text?.Trim()??"";try{settings.Save();}catch(Exception ex){status.Text=UiText.Status(ex.Message);}};
         var stateRow=new DockPanel();Grid.SetRow(stateRow,2);grid.Children.Add(stateRow);
-        openCodexSession=Ui.Icon("brand-openai",UiText.T("Codex에서 세션 열기"),()=>{try{if(sessionId.Tag is string id)CodexSessionLink.Open(id);}catch(Exception ex){status.Text=UiText.T("Codex 세션을 열지 못했습니다: ")+ex.Message;}});openCodexSession.IsVisible=false;DockPanel.SetDock(openCodexSession,Dock.Right);stateRow.Children.Add(openCodexSession);
+        openAgentSession=Ui.Icon("brand-openai",UiText.T("Codex에서 세션 열기"),async()=>await OpenAgentSession());openAgentSession.IsVisible=false;DockPanel.SetDock(openAgentSession,Dock.Right);stateRow.Children.Add(openAgentSession);
         DockPanel.SetDock(sessionId,Dock.Right);stateRow.Children.Add(sessionId);stateRow.Children.Add(status);
         captions.ItemsSource=rows;
         captions.ItemTemplate=new FuncDataTemplate<Caption>((caption,_)=>
@@ -122,11 +122,32 @@ internal sealed class DesktopWindow:Window
         async Task Test(string provider){var candidate=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(snapshot))!;candidate.AgentProvider=provider;var name=provider=="claude"?"Claude":"ChatGPT";try{await CodexTranslator.CheckConnectionAsync(candidate,cancel.Token);if(probe==cancel&&provider==snapshot.AgentProvider){connected=true;connection.Text=name+" "+UiText.T("연결됨");}}catch(Exception ex){if(probe!=cancel||cancel.IsCancellationRequested)return;failed.Add(name);if(provider==snapshot.AgentProvider)connection.Text=UiText.T("Agent 연결 실패")+": "+UiText.Status(ex.Message);}}
         try{await Task.WhenAll(Test("chatgpt"),Test("claude"));if(probe==cancel){var selected=snapshot.AgentProvider=="claude"?"Claude":"ChatGPT";agentWarning.IsVisible=failed.Contains(selected);agentWarningText.Text=UiText.T("연결 확인 필요")+"\n"+selected+" · "+UiText.T("설정에서 해당 Agent의 CLI 경로와 로그인을 확인하세요.");if(connected&&failed.Count>0)connection.Text+=" · "+string.Join(", ",failed)+" "+UiText.T("연결 실패");}}finally{if(probe==cancel)probe=null;}
     }
-    private void SetBusy(bool value){busy=value;mode.IsEnabled=source.IsEnabled=target.IsEnabled=topic.IsEnabled=!value&&session==null;category.IsEnabled=summarize.IsEnabled=!value;pause.IsEnabled=session!=null;}
+    private void RefreshSessionButton()
+    {
+        var agent=openAgentSession.Tag as CodexTranslator;openAgentSession.IsVisible=agent!=null&&Guid.TryParse(sessionId.Tag as string,out _);if(!openAgentSession.IsVisible)return;
+        bool claude=agent!.Provider=="claude";openAgentSession.IsEnabled=!claude||(!busy&&session==null);
+        ((PathIcon)openAgentSession.Content!).Data=Ui.Symbol(claude?"brand-claude":"brand-openai");
+        var label=UiText.T(claude?(openAgentSession.IsEnabled?"Claude Desktop에서 세션 열기":"녹음 중지 후 Claude Desktop에서 세션 열기"):"Codex에서 세션 열기");
+        ToolTip.SetTip(openAgentSession,label);Avalonia.Automation.AutomationProperties.SetName(openAgentSession,label);
+    }
+    private async Task OpenAgentSession()
+    {
+        if(openAgentSession.Tag is not CodexTranslator agent||sessionId.Tag is not string id)return;
+        bool opening=false;
+        try
+        {
+            if(agent.Provider=="chatgpt"){CodexSessionLink.Open(id);return;}
+            if(session!=null||busy)return;
+            opening=true;SetBusy(true);await agent.OpenClaudeDesktopAsync(CancellationToken.None);
+        }
+        catch(Exception ex){status.Text=UiText.T("Agent 세션을 열지 못했습니다: ")+ex.Message;}
+        finally{if(opening){SetBusy(false);if(exitRequested&&!closing){closing=true;Close();}}}
+    }
+    private void SetBusy(bool value){busy=value;RefreshSessionButton();mode.IsEnabled=source.IsEnabled=target.IsEnabled=topic.IsEnabled=!value&&session==null;category.IsEnabled=summarize.IsEnabled=!value;pause.IsEnabled=session!=null;}
     private void TogglePause(){if(session==null||!pause.IsEnabled)return;try{session.SetPaused(!session.IsPaused);}catch(Exception ex){status.Text=UiText.Status(ex.Message);return;}pause.Content=new PathIcon{Data=Ui.Symbol(session.IsPaused?"play":"pause")};ToolTip.SetTip(pause,UiText.T(session.IsPaused?"녹음 재개":"일시정지"));status.Text=UiText.T(session.IsPaused?"녹음이 일시정지되었습니다":"시스템 오디오를 듣고 있습니다");}
     private void Progress(string text,bool running=true){stage.Text=UiText.Status(text);progress.IsIndeterminate=running;progressPanel.IsVisible=true;}
     private void Tail(){if(follow&&rows.Count>0)captions.ScrollIntoView(rows[^1]);}
-    private void Clear(){rows.Clear();draft.Text="";sessionId.Text="";sessionId.Tag=null;openCodexSession.IsVisible=false;shownThrough=previewEnd=0;follow=true;}
+    private void Clear(){rows.Clear();draft.Text="";sessionId.Text="";sessionId.Tag=null;openAgentSession.Tag=null;openAgentSession.IsVisible=false;shownThrough=previewEnd=0;follow=true;}
     private async Task StartStop()
     {
         if(busy){operation?.Cancel();return;}
@@ -139,7 +160,7 @@ internal sealed class DesktopWindow:Window
                 if(!connected){await Check();if(!connected)throw new IOException(UiText.T("Agent 연결을 확인하세요."));}
                 Clear();var current=new CaptionSession(settings);session=current;
                 current.Status+=s=>Dispatcher.UIThread.Post(()=>{status.Text=UiText.Status(s);if(busy)Progress(UiText.Status(s));});
-                current.SessionStarted+=id=>Dispatcher.UIThread.Post(()=>{if(session!=current)return;sessionId.Tag=id;sessionId.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];ToolTip.SetTip(sessionId,id);openCodexSession.IsVisible=settings.AgentProvider=="chatgpt"&&Guid.TryParse(id,out _);});
+                current.SessionStarted+=id=>Dispatcher.UIThread.Post(()=>{if(session!=current)return;sessionId.Tag=id;sessionId.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];ToolTip.SetTip(sessionId,id);openAgentSession.Tag=current.Agent;RefreshSessionButton();});
                 current.Partial+=p=>Dispatcher.UIThread.Post(()=>{if(session!=current||p.End<=shownThrough||p.End<previewEnd)return;previewEnd=p.End;draft.Text=p.Text;});
                 current.Updated+=c=>Dispatcher.UIThread.Post(()=>{if(session!=current)return;int index=rows.ToList().FindIndex(r=>r.Id==c.Id);if(index<0){rows.Add(c);shownThrough=Math.Max(shownThrough,c.End);if(c.End>=previewEnd)draft.Text="";}else rows[index]=c;Tail();});
                 current.LanguagesDetected+=codes=>Dispatcher.UIThread.Post(()=>status.Text=UiText.T("감지 언어: ")+string.Join(", ",codes));

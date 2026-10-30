@@ -109,10 +109,30 @@ public partial class MainWindow : Window
     {
         if(SessionIdText.Tag is string id)try{Clipboard.SetText(id);}catch(Exception ex){StatusText.Text=UiText.Status(ex.Message);}
     }
-    private void OpenCodexSession(object sender,RoutedEventArgs e)
+    private void RefreshSessionButton()
     {
-        try{if(SessionIdText.Tag is string id)CodexSessionLink.Open(id);}
-        catch(Exception ex){StatusText.Text=UiText.T("Codex 세션을 열지 못했습니다: ")+ex.Message;}
+        var agent=OpenAgentSessionButton.CommandParameter as CodexTranslator;
+        var visible=agent!=null&&Guid.TryParse(SessionIdText.Tag as string,out _);
+        OpenAgentSessionButton.Visibility=visible?Visibility.Visible:Visibility.Collapsed;
+        if(!visible)return;
+        bool claude=agent!.Provider=="claude";
+        OpenAgentSessionButton.IsEnabled=!claude||(!busy&&session==null);
+        OpenAgentSessionButton.Tag=FindResource(claude?"Icon-brand-claude":"Icon-brand-openai");
+        OpenAgentSessionButton.Content=UiText.T(claude?(OpenAgentSessionButton.IsEnabled?"Claude Desktop에서 세션 열기":"녹음 중지 후 Claude Desktop에서 세션 열기"):"Codex에서 세션 열기");
+    }
+    private async void OpenAgentSession(object sender,RoutedEventArgs e)
+    {
+        if(OpenAgentSessionButton.CommandParameter is not CodexTranslator agent||SessionIdText.Tag is not string id)return;
+        bool opening=false;
+        try
+        {
+            if(agent.Provider=="chatgpt"){CodexSessionLink.Open(id);return;}
+            if(session!=null||busy)return;
+            opening=true;busy=true;StartButton.IsEnabled=SettingsButton.IsEnabled=SummaryRetryButton.IsEnabled=false;RefreshSessionButton();
+            await agent.OpenClaudeDesktopAsync(CancellationToken.None);
+        }
+        catch(Exception ex){StatusText.Text=UiText.T("Agent 세션을 열지 못했습니다: ")+ex.Message;}
+        finally{if(opening){busy=false;StartButton.IsEnabled=SettingsButton.IsEnabled=true;RefreshSummaryControls();if(closeWhenReady&&!closeAfterStop){closeAfterStop=true;Close();}}}
     }
     private WindowsHotkeys? hotkeys;
     private void RegisterShortcuts(){hotkeys??=new WindowsHotkeys(ExecuteShortcut);hotkeys.Bind(settings.Shortcuts);}
@@ -135,6 +155,7 @@ public partial class MainWindow : Window
     }
     private void RefreshSummaryControls()
     {
+        RefreshSessionButton();
         loadingCategory = true;
         SummaryPicker.ItemsSource = new[] { SummaryNotes.None }.Concat(settings.SummaryCategories).Select(c=>c with{}).ToArray();
         SummaryPicker.SelectedValue = settings.SelectedSummary.Id;
@@ -230,7 +251,7 @@ public partial class MainWindow : Window
         postStopAttempted=false;
         var current = new CaptionSession(settings);
         session = current;
-        current.SessionStarted += id => Dispatch(()=>{if(session!=current)return;SessionIdText.Tag=id;SessionIdText.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];SessionIdText.ToolTip=id+UiText.T(" (클릭해서 복사)");OpenCodexSessionButton.Visibility=settings.AgentProvider=="chatgpt"&&Guid.TryParse(id,out _)?Visibility.Visible:Visibility.Collapsed;});
+        current.SessionStarted += id => Dispatch(()=>{if(session!=current)return;SessionIdText.Tag=id;SessionIdText.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];SessionIdText.ToolTip=id+UiText.T(" (클릭해서 복사)");OpenAgentSessionButton.CommandParameter=current.Agent;RefreshSessionButton();});
         using var startup = new CancellationTokenSource();
         startupCancellation = startup;
         SetMainAction("x", UiText.T("모델 준비 취소"));
@@ -476,7 +497,7 @@ public partial class MainWindow : Window
         rows.Clear();
         latestPreviewEnd = displayedThrough = 0;
         PartialText.Text = "";
-        SessionIdText.Text=""; SessionIdText.Tag=null;OpenCodexSessionButton.Visibility=Visibility.Collapsed;
+        SessionIdText.Text=""; SessionIdText.Tag=null;OpenAgentSessionButton.CommandParameter=null;OpenAgentSessionButton.Visibility=Visibility.Collapsed;
         Meter.Value = 0;
         RefreshLanguages();
         EmptyText.ClearValue(VisibilityProperty);
@@ -511,6 +532,7 @@ public partial class MainWindow : Window
         if (busy || (session?.Folder??lastFolder) is not string folder || settings.SelectedSummary.Id=="none") return;
         bool live=session!=null;
         busy = true;
+        RefreshSessionButton();
         try { session?.FlushCaptions();await GenerateSummaryAsync(folder, live?null:lastSourceWarning,true); }
         catch(Exception ex){ShowProcessing(UiText.T("요약을 완료하지 못했습니다"),UiText.Status(ex.Message),false,false);}
         finally

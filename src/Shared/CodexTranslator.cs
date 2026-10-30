@@ -117,6 +117,31 @@ public sealed class CodexTranslator
         if (!reply.RootElement.GetProperty("ok").GetBoolean()) throw new IOException("Agent 응답 확인 실패");
         return (agent.Provider == "claude" ? "Claude" : "ChatGPT") + " 연결됨";
     }
+    public async Task OpenClaudeDesktopAsync(CancellationToken token)
+    {
+        if(Provider!="claude"||!Guid.TryParse(SessionId,out var id))throw new InvalidOperationException("Claude session is not available.");
+        await gate.WaitAsync(token);
+        Process? process=null;
+        try
+        {
+            var start=new ProcessStartInfo(executable){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=Encoding.UTF8,StandardErrorEncoding=Encoding.UTF8,WorkingDirectory=work};
+            if(entryScript!=null)start.ArgumentList.Add(entryScript);
+            start.ArgumentList.Add("--desktop");start.ArgumentList.Add("--resume");start.ArgumentList.Add(id.ToString("D"));
+            start.Environment.Remove("ANTHROPIC_API_KEY");
+            process=Process.Start(start)??throw new IOException("Claude Code could not start.");
+            using var timeout=CancellationTokenSource.CreateLinkedTokenSource(token);timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using var kill=timeout.Token.Register(()=>{try{if(!process.HasExited)process.Kill(true);}catch{}});
+            var output=process.StandardOutput.ReadToEndAsync();var error=process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync(timeout.Token);await Task.WhenAll(output,error);
+            if(process.ExitCode!=0||!output.Result.Contains("Opening session "+id.ToString("D")+" in Claude Desktop",StringComparison.OrdinalIgnoreCase))
+            {
+                var detail=(error.Result+" "+output.Result).Trim();
+                throw new IOException("Claude Desktop requires Claude Code 2.1.285 or newer, an installed Desktop app and a signed-in subscription. "+detail[..Math.Min(detail.Length,500)]);
+            }
+        }
+        catch(OperationCanceledException) when(!token.IsCancellationRequested){throw new IOException("Claude Desktop did not respond within 30 seconds.");}
+        finally{if(process!=null){if(!process.HasExited)try{process.Kill(true);await process.WaitForExitAsync();}catch{}process.Dispose();}gate.Release();}
+    }
     public async Task<string> TranslateAsync(string source, IReadOnlyList<string> context, CancellationToken token) =>
         (await TranslateBatchAsync([new(1, "", 0, 1, source)], context, token))[1];
     public async Task<Dictionary<int,string>> TranslateBatchAsync(IReadOnlyList<Caption> captions, IReadOnlyList<string> context, CancellationToken token)

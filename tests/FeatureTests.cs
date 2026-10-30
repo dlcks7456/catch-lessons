@@ -109,7 +109,7 @@ internal static class FeatureTests
         await File.WriteAllTextAsync(Path.Combine(folder,LocalModels.Choices[0].File),"invalid");Check(!LocalModels.HasExistingModel(folder),"A truncated model is not treated as installed");File.Delete(Path.Combine(folder,LocalModels.Choices[0].File));
         Check(LocalModels.WhisperEnabledAt(folder),"Whisper enabled by default");await File.WriteAllTextAsync(Path.Combine(folder,"whisper-disabled.flag"),"");Check(!LocalModels.WhisperEnabledAt(folder),"API-only installation disables Whisper");
         var fake=Path.Combine(folder,"fake-cli.js");await File.WriteAllTextAsync(fake,"""
-            const fs=require('fs');const args=process.argv.slice(2);fs.appendFileSync('calls.jsonl',JSON.stringify(args)+'\n');let input='';process.stdin.on('data',x=>input+=x);process.stdin.on('end',()=>{
+            const fs=require('fs');const args=process.argv.slice(2);fs.appendFileSync('calls.jsonl',JSON.stringify(args)+'\n');if(args.includes('--desktop')){console.log('Opening session '+args[args.indexOf('--resume')+1]+' in Claude Desktop');process.exit(0);}let input='';process.stdin.on('data',x=>input+=x);process.stdin.on('end',()=>{
             const id='11111111-1111-4111-8111-111111111111';let result={ok:true};
             if(input.includes('"current":')){const data=JSON.parse(input.substring(input.lastIndexOf('\n')+1));if(data.current.some(c=>c.text==='FAIL_FIRST')){console.log(JSON.stringify({type:'error',message:'simulated transient failure'}));process.exitCode=1;return;}result={translations:data.current.map(c=>({id:c.id,text:'테스트 번역'}))};}else if(input.includes('Output language:'))result={markdown:'# Test summary\n\nCaptured content.'};
             if(args[0]==='-p')console.log(JSON.stringify({session_id:id,is_error:false,structured_output:result}));else{fs.writeFileSync(args[args.indexOf('--output-last-message')+1],JSON.stringify(result));console.log(JSON.stringify({type:'thread.started',thread_id:id}));}});
@@ -120,7 +120,24 @@ internal static class FeatureTests
             var args=JsonSerializer.Deserialize<string[]>(File.ReadLines(Path.Combine(folder,"calls.jsonl")).Last())!;
             Check(args.Contains(provider=="claude"?"haiku":"gpt-6-luna")&&args.Contains(provider=="claude"?"low":"model_reasoning_effort=\"low\"")&&fakeAgent.SessionId==id,"Explicit provider model/effort survives resume: "+provider);
             Check(provider=="claude"?!args.Any(a=>a.StartsWith("service_tier=")):args.Contains("service_tier=\"default\""),"Fast off explicit and Claude isolated");
+            if(provider=="claude")
+            {
+                await fakeAgent.OpenClaudeDesktopAsync(CancellationToken.None);
+                var desktopArgs=JsonSerializer.Deserialize<string[]>(File.ReadLines(Path.Combine(folder,"calls.jsonl")).Last())!;
+                Check(desktopArgs.SequenceEqual(new[]{"--desktop","--resume",id}),"Claude Desktop opens the same recorded session");
+                var offlineSettings=new Settings{SummaryEnabled=false,OpenFolderAfterSummary=false};var offlineStore=new SessionStore(folder);offlineStore.Save(new(1,"claude",0,1,"Keep Claude caption"));
+                var offlineSession=new CaptionSession(offlineSettings);var flags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
+                typeof(CaptionSession).GetField("store",flags)!.SetValue(offlineSession,offlineStore);typeof(CaptionSession).GetField("translator",flags)!.SetValue(offlineSession,fakeAgent);
+                var offlineWindow=new MainWindow();typeof(MainWindow).GetField("settings",flags)!.SetValue(offlineWindow,offlineSettings);typeof(MainWindow).GetField("session",flags)!.SetValue(offlineWindow,offlineSession);
+                offlineWindow.SessionIdText.Tag=id;offlineWindow.OpenAgentSessionButton.CommandParameter=fakeAgent;typeof(MainWindow).GetMethod("RefreshSessionButton",flags)!.Invoke(offlineWindow,null);
+                Check(offlineWindow.OpenAgentSessionButton.Visibility==System.Windows.Visibility.Visible&&!offlineWindow.OpenAgentSessionButton.IsEnabled,"Claude session button is disabled while recording");
+                await ((Task)typeof(MainWindow).GetMethod("StopAsync",flags)!.Invoke(offlineWindow,[true])!).WaitAsync(TimeSpan.FromSeconds(20));
+                Check(offlineWindow.OpenAgentSessionButton.IsEnabled&&Equals(offlineWindow.OpenAgentSessionButton.CommandParameter,fakeAgent),"Claude session button is enabled after stop");offlineWindow.Close();
+            }
         }
+        var unavailableCli=Path.Combine(folder,"desktop-unavailable.js");await File.WriteAllTextAsync(unavailableCli,"console.error('unknown option --desktop');process.exit(1);");
+        var unavailableAgent=new CodexTranslator(unavailableCli,folder,provider:"claude");typeof(CodexTranslator).GetProperty("SessionId")!.GetSetMethod(true)!.Invoke(unavailableAgent,["11111111-1111-4111-8111-111111111111"]);
+        bool desktopError=false;try{await unavailableAgent.OpenClaudeDesktopAsync(CancellationToken.None);}catch(IOException ex){desktopError=ex.Message.Contains("2.1.285")&&ex.Message.Contains("unknown option");}Check(desktopError,"Claude Desktop failures include the version requirement and CLI error");
         var fastAgent=new CodexTranslator(fake,folder,fastMode:true);await fastAgent.StartSessionAsync(folder,CancellationToken.None);await fastAgent.TranslateAsync("fast test",[],CancellationToken.None);var fastArgs=JsonSerializer.Deserialize<string[]>(File.ReadLines(Path.Combine(folder,"calls.jsonl")).Last())!;Check(fastArgs.Contains("service_tier=\"fast\"")&&fastArgs.Contains("features.fast_mode=true"),"Fast on passed on resumed request");
         foreach(bool summarizeOnStop in new[]{false,true})
         {
