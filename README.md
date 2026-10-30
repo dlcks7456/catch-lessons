@@ -24,6 +24,8 @@ I built CatchLessons to make studying more convenient. It is not a professional 
 
 Summaries and translations share the recording's agent conversation. A manual summary and a translation request are serialized through that conversation, so a long summary can delay later translations. A summary covers finalized source text; an unfinished preview may not yet be included.
 
+After stopping, the captions remain visible and can be summarized again until a new recording starts. For Codex recordings, use the icon beside the session ID to open that same local conversation in the Codex app; the session ID can also be copied. Codex and CatchLessons must use the same local Codex history. Sessions created with `codex exec` may not appear automatically in the Codex sidebar.
+
 ## 📦 Download and install
 
 | Platform | Installer | Status |

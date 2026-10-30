@@ -109,6 +109,11 @@ public partial class MainWindow : Window
     {
         if(SessionIdText.Tag is string id)try{Clipboard.SetText(id);}catch(Exception ex){StatusText.Text=UiText.Status(ex.Message);}
     }
+    private void OpenCodexSession(object sender,RoutedEventArgs e)
+    {
+        try{if(SessionIdText.Tag is string id)CodexSessionLink.Open(id);}
+        catch(Exception ex){StatusText.Text=UiText.T("Codex 세션을 열지 못했습니다: ")+ex.Message;}
+    }
     private WindowsHotkeys? hotkeys;
     private void RegisterShortcuts(){hotkeys??=new WindowsHotkeys(ExecuteShortcut);hotkeys.Bind(settings.Shortcuts);}
     private void ExecuteShortcut(string action)
@@ -225,7 +230,7 @@ public partial class MainWindow : Window
         postStopAttempted=false;
         var current = new CaptionSession(settings);
         session = current;
-        current.SessionStarted += id => Dispatch(()=>{if(session!=current)return;SessionIdText.Tag=id;SessionIdText.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];SessionIdText.ToolTip=id+UiText.T(" (클릭해서 복사)");});
+        current.SessionStarted += id => Dispatch(()=>{if(session!=current)return;SessionIdText.Tag=id;SessionIdText.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];SessionIdText.ToolTip=id+UiText.T(" (클릭해서 복사)");OpenCodexSessionButton.Visibility=settings.AgentProvider=="chatgpt"&&Guid.TryParse(id,out _)?Visibility.Visible:Visibility.Collapsed;});
         using var startup = new CancellationTokenSource();
         startupCancellation = startup;
         SetMainAction("x", UiText.T("모델 준비 취소"));
@@ -297,6 +302,9 @@ public partial class MainWindow : Window
         try
         {
             await old.StopAsync();
+            await Dispatcher.InvokeAsync(()=>{}, System.Windows.Threading.DispatcherPriority.Background);
+            PartialText.Text = "";
+            Meter.Value = 0;
             session = null;
             lastFolder = old.Folder;
             lastAgent = old.Agent;
@@ -305,7 +313,6 @@ public partial class MainWindow : Window
             if (summarize && settings.ShouldSummarize && lastFolder != null) await GenerateSummaryAsync(lastFolder, old.StopWarning);
             else
             {
-                if (summarize) ResetCaptionDisplay();
                 ShowProcessing(UiText.T("저장 완료"), (old.StopWarning is null ? null : UiText.Status(old.StopWarning)) ?? UiText.T("원문과 선택한 기록을 저장했습니다. 요약은 실행하지 않았습니다."), false, false);
             }
             if(summarize&&lastFolder!=null&&(!settings.ShouldSummarize||summarySaved))await RunPostStopWorkflowAsync(lastFolder);
@@ -424,7 +431,6 @@ public partial class MainWindow : Window
                 }), cancel.Token, warning, settings.SummaryLanguage, category,settings.SummaryFormat);
             summaryCancellation = null;
             summarySaved=true;
-            if(!manual)ResetCaptionDisplay();
             StatusText.Text = UiText.T(manual&&session!=null?"요약 저장 완료 · 녹음 계속 중 · ":"요약 저장 완료 · 새 세션 시작 대기 · ") + Path.GetFileName(path);
             try { if (settings.OpenFolderAfterSummary) Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }); }
             catch (Exception ex) { StatusText.Text += UiText.T(" · 폴더 열기 실패: ") + ex.Message; }
@@ -470,7 +476,7 @@ public partial class MainWindow : Window
         rows.Clear();
         latestPreviewEnd = displayedThrough = 0;
         PartialText.Text = "";
-        SessionIdText.Text=""; SessionIdText.Tag=null;
+        SessionIdText.Text=""; SessionIdText.Tag=null;OpenCodexSessionButton.Visibility=Visibility.Collapsed;
         Meter.Value = 0;
         RefreshLanguages();
         EmptyText.ClearValue(VisibilityProperty);

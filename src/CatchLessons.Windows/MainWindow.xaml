@@ -50,6 +50,7 @@
       <Grid Grid.Column="4"><TextBox x:Name="TopicInput" Height="36" Margin="0" MaxLength="800" VerticalContentAlignment="Center" TextChanged="TopicChanged" LostKeyboardFocus="TopicLostFocus" ToolTip="주제 힌트"/><TextBlock x:Name="TopicPlaceholder" Text="주제 힌트" Foreground="{DynamicResource Muted}" Margin="11,0" VerticalAlignment="Center" IsHitTestVisible="False"/></Grid>
      </Grid>
      <DockPanel Grid.Row="1" Margin="2,9,2,0">
+      <Button x:Name="OpenCodexSessionButton" DockPanel.Dock="Right" Width="28" Height="28" Margin="5,0,0,0" Visibility="Collapsed" Content="Codex에서 세션 열기" Style="{StaticResource IconButton}" Tag="{StaticResource Icon-brand-openai}" Click="OpenCodexSession"/>
       <TextBlock x:Name="SessionIdText" DockPanel.Dock="Right" FontSize="10" Foreground="{DynamicResource Muted}" Margin="8,0,0,0" Cursor="Hand" MouseLeftButtonUp="CopySessionId" AutomationProperties.Name="Agent 세션 ID"/>
       <ProgressBar x:Name="Meter" Width="36" Height="3" Maximum="1" Foreground="{DynamicResource Accent}" Background="{DynamicResource Line}" Margin="0,0,9,0"/>
       <TextBlock x:Name="DetectionText" DockPanel.Dock="Right" Foreground="{DynamicResource Accent}" FontSize="11" Margin="8,0,0,0"/>

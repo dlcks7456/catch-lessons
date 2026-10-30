@@ -34,7 +34,7 @@ internal sealed class DesktopWindow:Window
     private readonly Border agentWarning=new(){IsVisible=false,Padding=new Thickness(14),CornerRadius=new CornerRadius(10),Background=Brush.Parse("#503C35"),HorizontalAlignment=HorizontalAlignment.Stretch,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(20,135,20,0)};
     private readonly TextBlock agentWarningText=new(){TextWrapping=TextWrapping.Wrap};
     private readonly CheckBox summarize=new(){Content=UiText.T("요약"),Width=45};
-    private readonly Button start,pause;
+    private readonly Button start,pause,openCodexSession;
     private readonly Border shell=new(){Padding=new Thickness(18),CornerRadius=new CornerRadius(18)};
     private double shownThrough,previewEnd;
     public bool BackgroundEnabled {get;set;}
@@ -65,7 +65,9 @@ internal sealed class DesktopWindow:Window
         var arrow=new TextBlock{Text="→",HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(arrow,1);languages.Children.Add(arrow);
         topic=Ui.Input(settings.Topic);topic.PlaceholderText=UiText.T("주제 힌트");topic.Margin=new Thickness(0,5,0,12);Grid.SetColumn(topic,4);languages.Children.Add(topic);
         topic.LostFocus+=(_,_)=>{if(loading||busy||session!=null)return;settings.Topic=topic.Text?.Trim()??"";try{settings.Save();}catch(Exception ex){status.Text=UiText.Status(ex.Message);}};
-        var stateRow=new DockPanel();Grid.SetRow(stateRow,2);grid.Children.Add(stateRow);DockPanel.SetDock(sessionId,Dock.Right);stateRow.Children.Add(sessionId);stateRow.Children.Add(status);
+        var stateRow=new DockPanel();Grid.SetRow(stateRow,2);grid.Children.Add(stateRow);
+        openCodexSession=Ui.Icon("brand-openai",UiText.T("Codex에서 세션 열기"),()=>{try{if(sessionId.Tag is string id)CodexSessionLink.Open(id);}catch(Exception ex){status.Text=UiText.T("Codex 세션을 열지 못했습니다: ")+ex.Message;}});openCodexSession.IsVisible=false;DockPanel.SetDock(openCodexSession,Dock.Right);stateRow.Children.Add(openCodexSession);
+        DockPanel.SetDock(sessionId,Dock.Right);stateRow.Children.Add(sessionId);stateRow.Children.Add(status);
         captions.ItemsSource=rows;
         captions.ItemTemplate=new FuncDataTemplate<Caption>((caption,_)=>
         {
@@ -124,7 +126,7 @@ internal sealed class DesktopWindow:Window
     private void TogglePause(){if(session==null||!pause.IsEnabled)return;try{session.SetPaused(!session.IsPaused);}catch(Exception ex){status.Text=UiText.Status(ex.Message);return;}pause.Content=new PathIcon{Data=Ui.Symbol(session.IsPaused?"play":"pause")};ToolTip.SetTip(pause,UiText.T(session.IsPaused?"녹음 재개":"일시정지"));status.Text=UiText.T(session.IsPaused?"녹음이 일시정지되었습니다":"시스템 오디오를 듣고 있습니다");}
     private void Progress(string text,bool running=true){stage.Text=UiText.Status(text);progress.IsIndeterminate=running;progressPanel.IsVisible=true;}
     private void Tail(){if(follow&&rows.Count>0)captions.ScrollIntoView(rows[^1]);}
-    private void Clear(){rows.Clear();draft.Text="";shownThrough=previewEnd=0;follow=true;}
+    private void Clear(){rows.Clear();draft.Text="";sessionId.Text="";sessionId.Tag=null;openCodexSession.IsVisible=false;shownThrough=previewEnd=0;follow=true;}
     private async Task StartStop()
     {
         if(busy){operation?.Cancel();return;}
@@ -137,7 +139,7 @@ internal sealed class DesktopWindow:Window
                 if(!connected){await Check();if(!connected)throw new IOException(UiText.T("Agent 연결을 확인하세요."));}
                 Clear();var current=new CaptionSession(settings);session=current;
                 current.Status+=s=>Dispatcher.UIThread.Post(()=>{status.Text=UiText.Status(s);if(busy)Progress(UiText.Status(s));});
-                current.SessionStarted+=id=>Dispatcher.UIThread.Post(()=>{sessionId.Text=UiText.T("세션 ")+id[..8];ToolTip.SetTip(sessionId,id);});
+                current.SessionStarted+=id=>Dispatcher.UIThread.Post(()=>{if(session!=current)return;sessionId.Tag=id;sessionId.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];ToolTip.SetTip(sessionId,id);openCodexSession.IsVisible=settings.AgentProvider=="chatgpt"&&Guid.TryParse(id,out _);});
                 current.Partial+=p=>Dispatcher.UIThread.Post(()=>{if(session!=current||p.End<=shownThrough||p.End<previewEnd)return;previewEnd=p.End;draft.Text=p.Text;});
                 current.Updated+=c=>Dispatcher.UIThread.Post(()=>{if(session!=current)return;int index=rows.ToList().FindIndex(r=>r.Id==c.Id);if(index<0){rows.Add(c);shownThrough=Math.Max(shownThrough,c.End);if(c.End>=previewEnd)draft.Text="";}else rows[index]=c;Tail();});
                 current.LanguagesDetected+=codes=>Dispatcher.UIThread.Post(()=>status.Text=UiText.T("감지 언어: ")+string.Join(", ",codes));
@@ -146,7 +148,7 @@ internal sealed class DesktopWindow:Window
             }
             else
             {
-                var current=session;pause.IsEnabled=false;Progress(UiText.T("녹음 마무리 중…"));await current.StopAsync();lastFolder=current.Folder;lastAgent=current.Agent;session=null;
+                var current=session;pause.IsEnabled=false;Progress(UiText.T("녹음 마무리 중…"));await current.StopAsync();await Dispatcher.UIThread.InvokeAsync(()=>{},DispatcherPriority.Background);draft.Text="";lastFolder=current.Folder;lastAgent=current.Agent;session=null;
                 if(lastFolder!=null&&lastAgent!=null)
                 {
                     if(settings.ShouldSummarize)await Summarize(lastFolder,lastAgent,cancel.Token);
@@ -156,7 +158,7 @@ internal sealed class DesktopWindow:Window
                         await File.WriteAllTextAsync(Path.Combine(SessionStore.InternalFor(lastFolder),"workflow-result-"+DateTime.Now.ToString("yyyyMMddHHmmss")+".md"),await lastAgent.RunWorkflowAsync(settings.PostStopPrompt,lastFolder,cancel.Token),cancel.Token);
                     }
                 }
-                Clear();Progress(UiText.T("저장 완료"),false);
+                Progress(UiText.T("저장 완료"),false);
             }
         }
         catch(Exception ex){if(session!=null){try{await session.StopAsync();}catch{}session=null;}Progress((pendingFailure??ex).Message,false);}

@@ -9,6 +9,7 @@
   <Compile Include="*.cs"/>
   <Compile Include="../Shared/InstanceActivation.cs" Link="Core/InstanceActivation.cs"/>
   <Compile Include="../Shared/AgentModels.cs" Link="Core/AgentModels.cs"/>
+  <Compile Include="../Shared/CodexSessionLink.cs" Link="Core/CodexSessionLink.cs"/>
   <Compile Include="../Shared/SettingsSaveGate.cs" Link="Core/SettingsSaveGate.cs"/>
   <Compile Include="../Shared/UiText.cs" Link="Core/UiText.cs"/><Compile Include="../Shared/UpdateService.cs" Link="Core/UpdateService.cs"/>
   <Compile Include="../Shared/Settings.cs;../Shared/Languages.cs;../Shared/LocalModels.cs;../Shared/LocalTranscriber.cs;../Shared/CloudTranscriber.cs;../Shared/ITranscriber.cs;../Shared/AudioCapture.cs;../Shared/IAudioCapture.cs;../Shared/MacAudioCapture.cs;../Shared/MacKeychain.cs;../Shared/SessionStore.cs;../Shared/CaptionSession.cs;../Shared/CaptionAssembler.cs;../Shared/CodexTranslator.cs;../Shared/SummaryNotes.cs;../Shared/ShortcutKeys.cs;../Shared/GlobalUsings.cs" Link="Core/%(Filename)%(Extension)"/>

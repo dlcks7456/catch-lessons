@@ -31,6 +31,8 @@ internal static class FeatureTests
         Check(!UpdateService.Parse("acme/caption",release.Replace("v1.2.0","v1.2"),"1.2.0",false).Newer,"Equivalent short version does not trigger an update");
         bool unsafeReleaseRejected=false;try{UpdateService.Parse("acme/caption",release.Replace("github.com/acme","evil.example/acme"),"1.0.0",false);}catch(IOException){unsafeReleaseRejected=true;}Check(unsafeReleaseRejected&&!UpdateService.ValidRepository("../outside"),"Update source and release URL validation");
         Check(settings.Shortcuts["pauseResume"]=="Primary+Alt+P","Pause shortcut default");
+        Check(CodexSessionLink.Create("11111111-1111-4111-8111-111111111111")=="codex://threads/11111111-1111-4111-8111-111111111111","Codex link targets the recorded thread");
+        bool invalidSessionLink=false;try{CodexSessionLink.Create("not-a-session?path=other");}catch(ArgumentException){invalidSessionLink=true;}Check(invalidSessionLink,"Invalid session links are rejected");
         var languageMarker=Path.Combine(Environment.CurrentDirectory,"artifacts","language-test-"+Guid.NewGuid().ToString("N"));
         Check(Settings.InitialUiLanguage(languageMarker)=="en","Missing installer language defaults to English");
         await File.WriteAllTextAsync(languageMarker,"ko");Check(Settings.InitialUiLanguage(languageMarker)=="ko","Korean installer language is used on first run");File.Delete(languageMarker);
@@ -109,7 +111,7 @@ internal static class FeatureTests
         var fake=Path.Combine(folder,"fake-cli.js");await File.WriteAllTextAsync(fake,"""
             const fs=require('fs');const args=process.argv.slice(2);fs.appendFileSync('calls.jsonl',JSON.stringify(args)+'\n');let input='';process.stdin.on('data',x=>input+=x);process.stdin.on('end',()=>{
             const id='11111111-1111-4111-8111-111111111111';let result={ok:true};
-            if(input.includes('"current":')){const data=JSON.parse(input.substring(input.lastIndexOf('\n')+1));if(data.current.some(c=>c.text==='FAIL_FIRST')){console.log(JSON.stringify({type:'error',message:'simulated transient failure'}));process.exitCode=1;return;}result={translations:data.current.map(c=>({id:c.id,text:'테스트 번역'}))};}
+            if(input.includes('"current":')){const data=JSON.parse(input.substring(input.lastIndexOf('\n')+1));if(data.current.some(c=>c.text==='FAIL_FIRST')){console.log(JSON.stringify({type:'error',message:'simulated transient failure'}));process.exitCode=1;return;}result={translations:data.current.map(c=>({id:c.id,text:'테스트 번역'}))};}else if(input.includes('Output language:'))result={markdown:'# Test summary\n\nCaptured content.'};
             if(args[0]==='-p')console.log(JSON.stringify({session_id:id,is_error:false,structured_output:result}));else{fs.writeFileSync(args[args.indexOf('--output-last-message')+1],JSON.stringify(result));console.log(JSON.stringify({type:'thread.started',thread_id:id}));}});
             """);
         foreach(var provider in new[]{"chatgpt","claude"})
@@ -120,6 +122,23 @@ internal static class FeatureTests
             Check(provider=="claude"?!args.Any(a=>a.StartsWith("service_tier=")):args.Contains("service_tier=\"default\""),"Fast off explicit and Claude isolated");
         }
         var fastAgent=new CodexTranslator(fake,folder,fastMode:true);await fastAgent.StartSessionAsync(folder,CancellationToken.None);await fastAgent.TranslateAsync("fast test",[],CancellationToken.None);var fastArgs=JsonSerializer.Deserialize<string[]>(File.ReadLines(Path.Combine(folder,"calls.jsonl")).Last())!;Check(fastArgs.Contains("service_tier=\"fast\"")&&fastArgs.Contains("features.fast_mode=true"),"Fast on passed on resumed request");
+        foreach(bool summarizeOnStop in new[]{false,true})
+        {
+            var stopSettings=new Settings{SummaryEnabled=summarizeOnStop,OpenFolderAfterSummary=false};
+            var stopStore=new SessionStore(folder);var caption=new Caption(1,"stop-test",0,1,"Keep original","번역 유지","done");stopStore.Save(caption);
+            var stopSession=new CaptionSession(stopSettings);var stopFlags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
+            typeof(CaptionSession).GetField("store",stopFlags)!.SetValue(stopSession,stopStore);typeof(CaptionSession).GetField("translator",stopFlags)!.SetValue(stopSession,fastAgent);
+            var stopWindow=new MainWindow();typeof(MainWindow).GetField("settings",stopFlags)!.SetValue(stopWindow,stopSettings);typeof(MainWindow).GetField("session",stopFlags)!.SetValue(stopWindow,stopSession);
+            stopWindow.ApplyCaption(caption);stopWindow.PartialText.Text="unfinished preview";stopWindow.SessionIdText.Tag=fastAgent.SessionId;
+            _=stopWindow.Dispatcher.BeginInvoke(new Action(()=>{if(ReferenceEquals(typeof(MainWindow).GetField("session",stopFlags)!.GetValue(stopWindow),stopSession))stopWindow.ApplyCaption(caption with{Korean="최종 번역"});}));
+            await ((Task)typeof(MainWindow).GetMethod("StopAsync",stopFlags)!.Invoke(stopWindow,[true])!).WaitAsync(TimeSpan.FromSeconds(20));
+            Check(stopWindow.History.Items.Count==1&&((CaptionRow)stopWindow.History.Items[0]).Value.Korean=="최종 번역"&&stopWindow.PartialText.Text==""&&stopWindow.SummaryRetryButton.IsEnabled&&Equals(stopWindow.SessionIdText.Tag,fastAgent.SessionId),"Stopping retains final queued captions, session and manual summary: "+summarizeOnStop);
+            Check(!summarizeOnStop||(bool)typeof(MainWindow).GetField("summarySaved",stopFlags)!.GetValue(stopWindow)!,"Automatic summary succeeds without clearing captions");
+            typeof(MainWindow).GetMethod("RetrySummary",stopFlags)!.Invoke(stopWindow,[stopWindow,new System.Windows.RoutedEventArgs()]);
+            for(int i=0;i<200&&(bool)typeof(MainWindow).GetField("busy",stopFlags)!.GetValue(stopWindow)!;i++)await Task.Delay(50);
+            Check(!(bool)typeof(MainWindow).GetField("busy",stopFlags)!.GetValue(stopWindow)!&&(bool)typeof(MainWindow).GetField("summarySaved",stopFlags)!.GetValue(stopWindow)!&&stopWindow.History.Items.Count==1,"Manual summary after stopping preserves captions");
+            stopWindow.ResetCaptionDisplay();Check(stopWindow.History.Items.Count==0&&stopWindow.SessionIdText.Tag==null,"New recording reset clears prior display");stopWindow.Close();
+        }
         var closeStore=new SessionStore(folder);closeStore.Save(new(1,"close-test",0,1,"Preserve the recording"));
         var closeSession=new CaptionSession(new Settings());var privateFlags=System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance;
         typeof(CaptionSession).GetField("store",privateFlags)!.SetValue(closeSession,closeStore);
