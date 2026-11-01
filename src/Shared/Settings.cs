@@ -11,6 +11,8 @@ public sealed class Settings
     public bool OutputFolderMigrated { get; set; }
     public string CodexPath { get; set; } = "";
     public string AgentProvider { get; set; } = "chatgpt";
+    public string TranslationProvider { get; set; } = "agent";
+    [System.Text.Json.Serialization.JsonIgnore] public bool ApiTranslation => !TranscriptionOnly && TranslationProvider == "openai";
     public string UiLanguage {get;set;}="en";
     public string CodexModel {get;set;}="gpt-6-luna";
     public string CodexEffort {get;set;}="low";
@@ -67,7 +69,13 @@ public sealed class Settings
     public bool TranscriptionOnly { get; set; }
     public string SummaryLanguage { get; set; } = "ko";
     public string SummaryFormat { get; set; } = "md";
-    public (double Silence, double Maximum) Segmentation => CaptionPace switch
+    public (double Silence, double Maximum) Segmentation => ApiTranslation && SpeechEngine=="openai" ? CaptionPace switch
+    {
+        // Short commits are for streaming ASR; Whisper retains its established audio context.
+        "fast" => (.4, 2),
+        "context" => (.9, 6),
+        _ => (.6, 3)
+    } : CaptionPace switch
     {
         "fast" => (.8, 8),
         "context" => (1.6, 20),
@@ -78,6 +86,7 @@ public sealed class Settings
     public string ProtectedKey { get; set; } = "";
     public void Save()
     {
+        if(TranslationProvider is not ("agent" or "openai"))throw new InvalidOperationException("Invalid translation provider.");
         if(UiLanguage is not ("en" or "ko"))throw new InvalidOperationException("Invalid app language.");
         foreach(var pair in new[]{(CodexModel,CodexEffort),(ClaudeModel,ClaudeEffort)})
             if(string.IsNullOrWhiteSpace(pair.Item1)||!new[]{"minimal","none","low","medium","high","xhigh","max","ultra"}.Contains(pair.Item2))throw new InvalidOperationException("모델과 effort를 선택하세요.");

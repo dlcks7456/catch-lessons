@@ -16,8 +16,10 @@ internal static class Program
             var window=new DesktopWindow();var settings=new DesktopSettings(new Settings());
             ((Avalonia.Controls.Control)window.Content!).Measure(new Size(920,500));
             ((Avalonia.Controls.Control)settings.Content!).Measure(new Size(700,740));
-            System.IO.File.WriteAllText(args.Length>1?args[1]:"desktop-ui-check.json","{\"passed\":true,\"liveUiActions\":0,\"agentCalls\":0}");
-            window.Close();settings.Close();return;
+            var apiSettings=new DesktopSettings(new Settings{TranslationProvider="openai"});
+            ((Avalonia.Controls.Control)apiSettings.Content!).Measure(new Size(700,740));
+            System.IO.File.WriteAllText(args.Length>1?args[1]:"desktop-ui-check.json","{\"passed\":true,\"apiTranslationSettings\":true,\"liveUiActions\":0,\"agentCalls\":0}");
+            window.Close();settings.Close();apiSettings.Close();return;
         }
         using var instance=new Mutex(true,(OperatingSystem.IsWindows()?"Local\\":"")+"CatchLessons-"+Environment.UserName,out var created);
         if(!created){InstanceActivation.SignalAsync().GetAwaiter().GetResult();return;}

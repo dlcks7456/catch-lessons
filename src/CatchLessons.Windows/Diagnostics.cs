@@ -85,6 +85,20 @@ public static class Diagnostics
         if (mode == "--quality-test") return await QualityTests.RunAsync();
         if (mode == "--summary-test") return await SummaryTests.RunAsync();
         if (mode == "--feature-test") return await FeatureTests.RunAsync();
+        if (mode == "--api-translation-test") return await OpenAiTranslationTests.RunAsync();
+        if (mode == "--api-segmentation-smoke") return await LocalTests.SmokeAsync(apiTranslation:true);
+        if (mode == "--api-translation-live-test")
+        {
+            var settings=Settings.Load();
+            if(string.IsNullOrWhiteSpace(settings.GetKey()))return JsonSerializer.Serialize(new{skipped=true,reason="No saved OpenAI API key",cloudRequests=0});
+            settings.TargetLanguage="ko";settings.Topic="Software architecture";settings.Terms="CatchLessons";
+            using var api=new OpenAiTranslator(settings);using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            var watch=System.Diagnostics.Stopwatch.StartNew();double? firstText=null;
+            var first=await api.TranslateAsync(new(1,"test-1",0,3,"The app is called CatchLessons."),_=>firstText??=watch.Elapsed.TotalSeconds,timeout.Token);
+            var second=await api.TranslateAsync(new(2,"test-2",3,6,"It captures system audio and displays translated captions."),_=>{},timeout.Token);
+            if(!first.Any(c=>c>='가'&&c<='힣')||!second.Any(c=>c>='가'&&c<='힣'))throw new IOException("Expected Korean translation was not returned.");
+            return JsonSerializer.Serialize(new{passed=true,model=OpenAiTranslator.Model,cloudRequests=2,firstTextSeconds=firstText,totalSeconds=watch.Elapsed.TotalSeconds,source="synthetic text; no captured audio",translation= new[]{first,second}});
+        }
         if(mode=="--hotkey-test")
         {
             var chord=new Dictionary<string,string>{{"startStop","Ctrl+Alt+Shift+F23"}};string? received=null;

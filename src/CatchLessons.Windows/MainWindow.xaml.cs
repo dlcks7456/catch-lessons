@@ -15,7 +15,7 @@ public sealed class CaptionRow(Caption caption) : INotifyPropertyChanged
     public FlowDirection SourceDirection => (FlowDirection)Languages.Direction(Value.Original);
     public FlowDirection TranslationDirection => (FlowDirection)Languages.Direction(DisplayKorean);
     public bool IsTranscriptionOnly => Value.State == "transcribed";
-    public string DisplayKorean => IsTranscriptionOnly ? "" : Value.State == "done" ? Value.Korean :
+    public string DisplayKorean => IsTranscriptionOnly ? "" : Value.State is "done" or "translating" ? Value.Korean :
         Value.State == "pending" ? UiText.T("번역 중…") : UiText.T("번역 미완료 · ")+Value.State;
     public event PropertyChangedEventHandler? PropertyChanged;
     public void Update(Caption c) { Value = c; PropertyChanged?.Invoke(this, new(null)); }
@@ -89,6 +89,15 @@ public partial class MainWindow : Window
     {
         connectionCheck?.Cancel();using var cancel=new CancellationTokenSource();connectionCheck=cancel;
         var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
+        if (snapshot.ApiTranslation)
+        {
+            agentConnected=false; ShowAgentWarnings([]); AgentConnectionText.Text="OpenAI API · "+UiText.T("연결 확인 중…");
+            if(session==null&&!busy)StartButton.IsEnabled=false;
+            try { await OpenAiTranslator.CheckConnectionAsync(snapshot,cancel.Token); if(connectionCheck==cancel){agentConnected=true;AgentConnectionText.Text="OpenAI API · "+UiText.T("연결됨");AgentConnectionText.ToolTip=null;} }
+            catch(Exception ex){if(connectionCheck==cancel){AgentConnectionText.Text="OpenAI API · "+UiText.T("연결 실패");AgentConnectionText.ToolTip=ex.Message;}}
+            finally {if(connectionCheck==cancel){connectionCheck=null;if(session==null&&!busy)StartButton.IsEnabled=agentConnected;}}
+            return;
+        }
         agentConnected=false;AgentConnectionText.Text=UiText.T("Agent 연결 확인 중…");AgentConnectionText.ToolTip=null;ShowAgentWarnings([]);if(session==null&&!busy)StartButton.IsEnabled=false;
         var failures=new List<string>();
         async Task Check(string provider)
@@ -171,6 +180,7 @@ public partial class MainWindow : Window
     {
         if (loadingMode || busy || session != null || ModePicker.SelectedValue is not bool only) return;
         settings.TranscriptionOnly = only;
+        if(settings.TranslationProvider=="openai")_=CheckAgentConnectionAsync();
         RefreshSummaryControls();
         try { settings.Save(); } catch (Exception ex) { StatusText.Text = UiText.Status(ex.Message); }
     }
@@ -442,8 +452,9 @@ public partial class MainWindow : Window
         ShowProcessing(UiText.T("전체 원문 요약 중"), category.Name + UiText.T(" · Codex 응답을 기다리고 있습니다."), true, true);
         try
         {
-            var codex = lastAgent ?? CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work"));
+            var codex = lastAgent ?? (settings.ApiTranslation ? await CodexTranslator.ForSavedSessionAsync(settings,folder,cancel.Token) : CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work")));
             if(codex.SessionId==null){Directory.CreateDirectory(SessionStore.InternalFor(folder));await codex.StartSessionAsync(SessionStore.InternalFor(folder),cancel.Token);}
+            if(settings.ApiTranslation)lastAgent=codex;
             var path = await SummaryNotes.CreateAsync(folder, settings.SummaryCategory, codex.WriteNoteAsync,
                 text => Dispatch(() =>
                 {
@@ -471,12 +482,13 @@ public partial class MainWindow : Window
     }
     private async Task RunPostStopWorkflowAsync(string folder)
     {
-        if(postStopAttempted||string.IsNullOrWhiteSpace(settings.PostStopPrompt)||lastAgent==null)return;
+        if(postStopAttempted||string.IsNullOrWhiteSpace(settings.PostStopPrompt))return;
         postStopAttempted=true;using var cancel=new CancellationTokenSource();summaryCancellation=cancel;
         ShowProcessing(UiText.T("후속 워크플로우 실행 중"),UiText.T("설정한 요청을 같은 Agent 세션에서 실행합니다. Agent 권한 정책이 적용됩니다."),true,true);
         SetMainAction("x",UiText.T("후속 작업 취소"));StartButton.IsEnabled=true;
         try
         {
+            lastAgent ??= await CodexTranslator.ForSavedSessionAsync(settings,folder,cancel.Token);
             await File.WriteAllTextAsync(Path.Combine(SessionStore.InternalFor(folder),"workflow-state.json"),"{\"status\":\"started\"}",cancel.Token);
             var report=await lastAgent.RunWorkflowAsync(settings.PostStopPrompt,folder,cancel.Token);
             await File.WriteAllTextAsync(Path.Combine(SessionStore.InternalFor(folder),"workflow-result-"+DateTime.Now.ToString("yyyyMMdd-HHmmss")+".md"),report,cancel.Token);

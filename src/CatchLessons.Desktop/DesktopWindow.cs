@@ -73,7 +73,7 @@ internal sealed class DesktopWindow:Window
         {
             if(caption==null)return new TextBlock();var panel=new StackPanel{Margin=new Thickness(2,8,6,12)};
             panel.Children.Add(new TextBlock{Text=caption.Original,TextWrapping=TextWrapping.Wrap,FontSize=caption.State=="transcribed"?24:14,Opacity=caption.State=="transcribed"?1:.7});
-            if(caption.State!="transcribed")panel.Children.Add(new TextBlock{Text=caption.State=="done"?caption.Korean:UiText.T("번역 중…"),TextWrapping=TextWrapping.Wrap,FontSize=24,Margin=new Thickness(0,6,0,0)});
+            if(caption.State!="transcribed")panel.Children.Add(new TextBlock{Text=caption.State is "done" or "translating"?caption.Korean:caption.State=="pending"?UiText.T("번역 중…"):UiText.T("번역 미완료 · ")+caption.State,TextWrapping=TextWrapping.Wrap,FontSize=24,Margin=new Thickness(0,6,0,0)});
             return panel;
         });
         Grid.SetRow(captions,3);grid.Children.Add(captions);Grid.SetRow(draft,4);grid.Children.Add(draft);
@@ -100,7 +100,7 @@ internal sealed class DesktopWindow:Window
         }
         loading=false;ApplyTheme();
         void SaveChoice(){if(loading||busy)return;if(session==null){settings.TranscriptionOnly=mode.SelectedItem as string==UiText.T("녹취 모드");settings.SourceLanguage=(source.SelectedItem as LanguageOption)?.Code??"auto";settings.TargetLanguage=(target.SelectedItem as LanguageOption)?.Code??"ko";}settings.SummaryCategory=(category.SelectedItem as SummaryCategory)?.Id??"none";settings.SummaryEnabled=summarize.IsChecked==true;try{settings.Save();}catch(Exception ex){status.Text=UiText.Status(ex.Message);}}
-        mode.SelectionChanged+=(_,_)=>SaveChoice();source.SelectionChanged+=(_,_)=>SaveChoice();target.SelectionChanged+=(_,_)=>SaveChoice();category.SelectionChanged+=(_,_)=>SaveChoice();summarize.IsCheckedChanged+=(_,_)=>SaveChoice();
+        mode.SelectionChanged+=async(_,_)=>{SaveChoice();if(!loading&&settings.TranslationProvider=="openai")await Check();};source.SelectionChanged+=(_,_)=>SaveChoice();target.SelectionChanged+=(_,_)=>SaveChoice();category.SelectionChanged+=(_,_)=>SaveChoice();summarize.IsCheckedChanged+=(_,_)=>SaveChoice();
         Opened+=async(_,_)=>await Check();
         Closing+=async(_,e)=>{if(BackgroundEnabled){e.Cancel=true;Hide();return;}if(closing)return;if(busy){e.Cancel=true;operation?.Cancel();return;}if(session!=null){e.Cancel=true;await StartStop();closing=true;Close();}};
         Closed+=(_,_)=>{probe?.Cancel();operation?.Cancel();};
@@ -119,6 +119,13 @@ internal sealed class DesktopWindow:Window
     private async Task Check()
     {
         probe?.Cancel();using var cancel=new CancellationTokenSource();probe=cancel;connected=false;connection.Text=UiText.T("연결 확인 중…");agentWarning.IsVisible=false;var failed=new List<string>();var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
+        if(snapshot.ApiTranslation)
+        {
+            try{await OpenAiTranslator.CheckConnectionAsync(snapshot,cancel.Token);if(probe==cancel){connected=true;connection.Text="OpenAI API · "+UiText.T("연결됨");}}
+            catch(Exception ex){if(probe==cancel)connection.Text="OpenAI API · "+ex.Message;}
+            finally{if(probe==cancel)probe=null;}
+            return;
+        }
         async Task Test(string provider){var candidate=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(snapshot))!;candidate.AgentProvider=provider;var name=provider=="claude"?"Claude":"ChatGPT";try{await CodexTranslator.CheckConnectionAsync(candidate,cancel.Token);if(probe==cancel&&provider==snapshot.AgentProvider){connected=true;connection.Text=name+" "+UiText.T("연결됨");}}catch(Exception ex){if(probe!=cancel||cancel.IsCancellationRequested)return;failed.Add(name);if(provider==snapshot.AgentProvider)connection.Text=UiText.T("Agent 연결 실패")+": "+UiText.Status(ex.Message);}}
         try{await Task.WhenAll(Test("chatgpt"),Test("claude"));if(probe==cancel){var selected=snapshot.AgentProvider=="claude"?"Claude":"ChatGPT";agentWarning.IsVisible=failed.Contains(selected);agentWarningText.Text=UiText.T("연결 확인 필요")+"\n"+selected+" · "+UiText.T("설정에서 해당 Agent의 CLI 경로와 로그인을 확인하세요.");if(connected&&failed.Count>0)connection.Text+=" · "+string.Join(", ",failed)+" "+UiText.T("연결 실패");}}finally{if(probe==cancel)probe=null;}
     }
@@ -170,11 +177,12 @@ internal sealed class DesktopWindow:Window
             else
             {
                 var current=session;pause.IsEnabled=false;Progress(UiText.T("녹음 마무리 중…"));await current.StopAsync();await Dispatcher.UIThread.InvokeAsync(()=>{},DispatcherPriority.Background);draft.Text="";lastFolder=current.Folder;lastAgent=current.Agent;session=null;
-                if(lastFolder!=null&&lastAgent!=null)
+                if(lastFolder!=null)
                 {
                     if(settings.ShouldSummarize)await Summarize(lastFolder,lastAgent,cancel.Token);
                     if(!string.IsNullOrWhiteSpace(settings.PostStopPrompt))
                     {
+                        lastAgent ??= await CodexTranslator.ForSavedSessionAsync(settings,lastFolder,cancel.Token);
                         Progress(UiText.T("후속 워크플로우 실행 중…"));
                         await File.WriteAllTextAsync(Path.Combine(SessionStore.InternalFor(lastFolder),"workflow-result-"+DateTime.Now.ToString("yyyyMMddHHmmss")+".md"),await lastAgent.RunWorkflowAsync(settings.PostStopPrompt,lastFolder,cancel.Token),cancel.Token);
                     }
@@ -185,15 +193,17 @@ internal sealed class DesktopWindow:Window
         catch(Exception ex){if(session!=null){try{await session.StopAsync();}catch{}session=null;}Progress((pendingFailure??ex).Message,false);}
         finally{pendingFailure=null;operation=null;SetBusy(false);if(exitRequested&&session==null){closing=true;Close();}}
     }
-    private async Task Summarize(string folder,CodexTranslator agent,CancellationToken token=default,bool manual=false)
+    private async Task Summarize(string folder,CodexTranslator? agent,CancellationToken token=default,bool manual=false)
     {
         if(!SummaryNotes.CanRun(settings,manual))return;
+        agent ??= await CodexTranslator.ForSavedSessionAsync(settings,folder,token);
+        if(settings.ApiTranslation)lastAgent=agent;
         await SummaryNotes.CreateAsync(folder,settings.SummaryCategory,agent.WriteNoteAsync,s=>Dispatcher.UIThread.Post(()=>Progress(s)),token,null,settings.SummaryLanguage,settings.SelectedSummary,settings.SummaryFormat);
         if(settings.OpenFolderAfterSummary)OpenFolder(folder);
     }
     private async Task RetrySummary()
     {
-        if(busy||(session?.Folder??lastFolder) is not string folder||lastAgent==null||settings.SelectedSummary.Id=="none")return;
+        if(busy||(session?.Folder??lastFolder) is not string folder||settings.SelectedSummary.Id=="none")return;
         using var cancel=new CancellationTokenSource();operation=cancel;SetBusy(true);
         try{session?.FlushCaptions();await Summarize(folder,lastAgent,cancel.Token,true);Progress(UiText.T("요약 저장 완료"),false);}
         catch(Exception ex){Progress(ex.Message,false);}

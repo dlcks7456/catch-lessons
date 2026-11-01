@@ -20,13 +20,18 @@ I built CatchLessons to make studying more convenient. It is not a professional 
 - **Notes:** choose a summary category and language, edit category prompts, and save a Markdown or plain-text summary. Run a summary on demand using the finalized transcript, or enable it when stopping.
 - **Your agent:** use a signed-in Codex or Claude CLI conversation per recording. Choose a model, effort and optional translation instruction. Codex Fast mode is optional and can consume more of your allowance.
 - **Local or API speech recognition:** local Whisper is the default. OpenAI API speech recognition is an alternative and requires an API key.
+- **OpenAI API translation:** choose it separately in Connection settings. Speech recognition and translation reuse one securely stored API key. Translation streams through the Responses API (`gpt-6-luna`, reasoning disabled), with the topic, terminology, translation instruction and up to eight recent source/translation pairs (12,000 characters) as context.
 - **Background app:** close the window to hide it; restore or quit from the tray/menu bar.
 
-Summaries and translations share the recording's agent conversation. A manual summary and a translation request are serialized through that conversation, so a long summary can delay later translations. A summary covers finalized source text; an unfinished preview may not yet be included.
+With agent translation, summaries and translations share the recording's agent conversation. A manual summary and a translation request are serialized through that conversation, so a long summary can delay later translations. A summary covers finalized source text; an unfinished preview may not yet be included. API translation runs independently; summaries and post-recording workflows still use the selected Codex/Claude agent, initialized when needed. API translation can start without a signed-in CLI.
+
+With API speech recognition plus API translation, Fast uses 0.4 seconds of silence / 2 seconds maximum, Balanced 0.6 / 3, and More context 0.9 / 6. Local Whisper retains its existing segmentation to avoid degrading recognition at short audio boundaries; continuous speech can therefore take up to the selected 8 / 12 / 20 seconds before transcription, plus processing time. API translation skips the agent path's extra sentence-assembly wait and displays translation as it arrives. Source text is finalized before translation starts; this is near-realtime caption translation, not word-by-word simultaneous interpretation. For the lowest caption latency, select API speech recognition as well. Network, model latency and queued requests affect delay. Failed or interrupted translations retain the original and are marked incomplete; preview text is not exported as a final translation. Recent context is local to one recording and API requests use `store: false`.
 
 After stopping, the captions remain visible and can be summarized again until a new recording starts. For Codex recordings, use the icon beside the session ID to open that same local conversation in the Codex app; the session ID can also be copied. Codex and CatchLessons must use the same local Codex history. Sessions created with `codex exec` may not appear automatically in the Codex sidebar. For Claude recordings, after stopping, use the Claude icon to open the same session in Claude Desktop. This requires Claude Code 2.1.285 or later, Claude Desktop, and a signed-in Claude subscription.
 
 ## 📦 Download and install
+
+The source version is **1.1.0**. The links below remain the published **1.0.2** installers; the API translation feature requires a build from the updated source until a new release is published.
 
 | Platform | Installer | Status |
 | --- | --- | --- |
@@ -34,7 +39,7 @@ After stopping, the captions remain visible and can be summarized again until a 
 | macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-arm64-1.0.2.pkg) | Experimental; real-device installation untested |
 | macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-x64-1.0.2.pkg) | Experimental; real-device installation untested |
 
-Open the downloaded installer and follow its instructions. Codex CLI or Claude Code must be installed and signed in separately. On Windows, uninstall via **Settings → Apps → Installed apps → CatchLessons**; recordings and settings are retained.
+Open the downloaded installer and follow its instructions. Agent features require Codex CLI or Claude Code to be installed and signed in separately. On Windows, uninstall via **Settings → Apps → Installed apps → CatchLessons**; recordings and settings are retained.
 
 During installation, **local Whisper is selected by default**. If no local model already exists, deselecting it makes the installation OpenAI-API-only; enter an API key in Connection settings. A valid existing Whisper model is reused when reinstalling, and the saved speech-engine setting is preserved. The installer bundles the .NET runtime and, when selected, the default Whisper and VAD models. The installer checks for agent executables and explains that sign-in is still required; it does not install or log in to an agent for you.
 
@@ -42,13 +47,13 @@ The Windows installer is currently **unsigned**, so Windows reputation checks ma
 
 ## 🚀 Start
 
-1. Install and sign in to at least one agent: [Codex CLI](https://developers.openai.com/codex/cli) or [Claude Code](https://code.claude.com/docs/en/setup).
+1. For agent translation, summaries or workflows, install and sign in to [Codex CLI](https://developers.openai.com/codex/cli) or [Claude Code](https://code.claude.com/docs/en/setup).
 2. Run the installer and choose whether to include local Whisper.
-3. In **Settings → Connection**, choose the agent and speech engine. If using OpenAI API speech recognition, enter its API key.
+3. In **Settings → Connection**, choose the agent, translation provider and speech engine. If either function uses OpenAI API, enter the shared API key. Agent installation/sign-in is only needed for agent translation, summaries and workflows.
 4. Choose source language (auto-detect or fixed), translation language, and an optional topic hint. Korean is the default translation language; the app interface defaults to English and can be switched to Korean.
 5. Start recording. Pause/resume as needed. Stop to save captions and, if enabled, create a summary.
 
-Windows uses system-output loopback, not the microphone. The macOS capture path is prepared but unverified. Translation and summaries require an internet connection to the selected agent even when Whisper is local. The API speech option sends audio to OpenAI and may incur API charges; Codex/Claude usage follows the selected account and plan. Raw WAV recording is optional and off by default.
+Windows uses system-output loopback, not the microphone. The macOS capture path is prepared but unverified. Translation and summaries require an internet connection even when Whisper is local. API speech sends audio to OpenAI; API translation sends source text, recent context and configured hints. API calls, including connection checks, incur API usage separately from Codex/Claude plan usage. Raw WAV recording is optional and off by default.
 
 ## ⌨️ Shortcuts
 

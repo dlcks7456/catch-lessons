@@ -63,7 +63,7 @@ internal static class LocalTests
         Check(!await LocalModels.ValidAsync(path, model, CancellationToken.None), "Reject corrupt model");
         return JsonSerializer.Serialize(new { passed = checks, cloudRequests = 0, liveUiActions = 0 });
     }
-    public static async Task<string> SmokeAsync(bool streaming = false,float volume=1)
+    public static async Task<string> SmokeAsync(bool streaming = false,float volume=1,bool apiTranslation=false)
     {
         using var logger = Whisper.net.Logger.LogProvider.AddLogger((level, message) =>
             File.AppendAllText("artifacts/local-native.log", $"{level}: {message}\n"));
@@ -81,7 +81,7 @@ internal static class LocalTests
         transcriber.Failed += ex => failure = ex;
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(20));
         var preparing = Stopwatch.StartNew();
-        await transcriber.InitializeAsync(new Settings(), timeout.Token);
+        await transcriber.InitializeAsync(new Settings{TranslationProvider=apiTranslation?"openai":"agent"}, timeout.Token);
         preparing.Stop();
         using var reader = new WaveFileReader(fixture);
         if (reader.WaveFormat.SampleRate != 16000 || reader.WaveFormat.Channels != 1 || reader.WaveFormat.BitsPerSample != 16)
@@ -112,12 +112,13 @@ internal static class LocalTests
         }
         await transcriber.DrainAsync(timeout.Token); clock.Stop();
         if (failure != null) throw failure;
+        if(apiTranslation&&captions.Count!=2)throw new Exception("API translation must preserve established Whisper segmentation");
         if (streaming && (captions.Count != 2 || !previewBeforeFinal)) throw new Exception("Previews must not create duplicate final captions");
         var transcript = string.Join(" ", captions.Select(c => c.Original));
         if (!transcript.Contains("country", StringComparison.OrdinalIgnoreCase) || !detected.Contains("en")) throw new Exception("Local recognition/language detection did not match the English fixture: " + transcript);
         return JsonSerializer.Serialize(new { passed = true, transcript, detected, audioSeconds = reader.TotalTime.TotalSeconds * 2,
             preparingSeconds = preparing.Elapsed.TotalSeconds, processingSeconds = clock.Elapsed.TotalSeconds, completionSeconds,
-            streamingTest = streaming, previewBeforeFinal, previewEvents, finalCaptions = captions.Count,
+            streamingTest = streaming, apiTranslation, previewBeforeFinal, previewEvents, finalCaptions = captions.Count,
             transcriber.RuntimeInfo, openAiRequests = 0, codexRequests = 0 });
     }
 }

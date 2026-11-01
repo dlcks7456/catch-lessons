@@ -59,11 +59,16 @@ internal sealed class DesktopSettings:Window
         modelChoice.SelectionChanged+=async(_,_)=>{if(loadingOptions)return;var efforts=AgentModels.Efforts(optionProvider,(modelChoice.SelectedItem as AgentModel)?.Id??"");loadingOptions=true;effortChoice.ItemsSource=efforts;effortChoice.SelectedItem=efforts.FirstOrDefault(e=>e.Id=="low")??efforts.FirstOrDefault();loadingOptions=false;SaveOptions();await Check();};
         effortChoice.SelectionChanged+=async(_,_)=>{if(!loadingOptions){SaveOptions();await Check();}};
         connection.Children.Remove(agent);var agentRow=new Grid{ColumnDefinitions=new ColumnDefinitions("*,Auto")};var checkButton=Ui.Icon("arrows-clockwise",UiText.T("Agent 연결 확인"),async()=>await Check());Grid.SetColumn(checkButton,1);agentRow.Children.Add(agent);agentRow.Children.Add(checkButton);connection.Children.Insert(connection.Children.IndexOf(agentStatus),agentRow);
+        Ui.Label(connection,UiText.T("번역 Provider"));var translationProvider=Ui.Choice(new[]{UiText.T("선택한 Agent"),"OpenAI API"},current.TranslationProvider=="openai"?"OpenAI API":UiText.T("선택한 Agent"));connection.Children.Add(translationProvider);
+        connection.Children.Add(new TextBlock{Text=UiText.T("Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함한 번역을 스트리밍합니다. 요약·후속 작업은 위 Agent를 사용합니다."),TextWrapping=TextWrapping.Wrap});
         Ui.Label(connection,UiText.T("음성 인식 엔진"));var engine=Ui.Choice(LocalModels.WhisperEnabled?new[]{UiText.T("로컬 Whisper"),"OpenAI API"}:new[]{"OpenAI API"},!LocalModels.WhisperEnabled||current.SpeechEngine=="openai"?"OpenAI API":UiText.T("로컬 Whisper"));connection.Children.Add(engine);
         var local=new StackPanel();connection.Children.Add(local);Ui.Label(local,UiText.T("음성 모델"));var model=Ui.Choice(LocalModels.Choices,LocalModels.Resolve(current.LocalModel));local.Children.Add(model);
         var cpu=new CheckBox{Content=UiText.T("CPU만 사용"),IsChecked=current.LocalCpuOnly};local.Children.Add(cpu);
         var cloud=new StackPanel();connection.Children.Add(cloud);Ui.Label(cloud,UiText.T("OpenAI API Key (운영체제 보안 저장소)"));var key=Ui.Input("");key.PasswordChar='●';bool keyLoaded=true;try{key.Text=current.GetKey();}catch{keyLoaded=false;}cloud.Children.Add(key);
-        void Engine(){cloud.IsVisible=engine.SelectedItem as string=="OpenAI API";local.IsVisible=!cloud.IsVisible;}engine.SelectionChanged+=(_,_)=>Engine();Engine();
+        cloud.Children.Add(new TextBlock{Text=UiText.T("음성 인식과 번역이 같은 키를 사용합니다. API 음성 인식은 음성을, API 번역은 원문·최근 맥락을 OpenAI로 전송하며 사용 요금이 발생합니다."),TextWrapping=TextWrapping.Wrap});
+        var apiStatus=new TextBlock{Text="gpt-6-luna · "+UiText.T("최근 8개 구간의 맥락 사용"),TextWrapping=TextWrapping.Wrap};cloud.Children.Add(apiStatus);
+        cloud.Children.Add(Ui.Button(UiText.T("API 번역 연결 확인"),async()=>{try{using var api=new OpenAiTranslator(value,key.Text??"",null);await api.CheckConnectionAsync(checkLife.Token);apiStatus.Text="OpenAI API · "+UiText.T("연결됨");}catch(Exception ex){apiStatus.Text=ex.Message;}}));
+        void Engine(){bool apiSpeech=engine.SelectedItem as string=="OpenAI API";cloud.IsVisible=apiSpeech||translationProvider.SelectedItem as string=="OpenAI API";local.IsVisible=!apiSpeech;}engine.SelectionChanged+=(_,_)=>Engine();translationProvider.SelectionChanged+=(_,_)=>Engine();Engine();
         Ui.Label(connection,UiText.T("Custom Instruction (선택)"));var instruction=Ui.Input(current.CustomInstruction,true);connection.Children.Add(instruction);
         Ui.Label(connection,UiText.T("중지 후 후속 작업 (Skill·MCP, 기존 Agent 승인 정책 적용)"));var workflow=Ui.Input(current.PostStopPrompt,true);connection.Children.Add(workflow);
         var language=Page(UiText.T("언어"));Ui.Label(language,UiText.T("원문 언어"));var source=Ui.Choice(Languages.Sources,Languages.Source(current.SourceLanguage));language.Children.Add(source);
@@ -96,6 +101,7 @@ internal sealed class DesktopSettings:Window
             try
             {
                 value.AgentProvider=agent.SelectedItem as string=="Claude"?"claude":"chatgpt";value.CodexPath=codex.Text??"";value.ClaudePath=claude.Text??"";
+                value.TranslationProvider=translationProvider.SelectedItem as string=="OpenAI API"?"openai":"agent";
                 SaveOptions();
                 value.SpeechEngine=engine.SelectedItem as string=="OpenAI API"?"openai":"whisper";value.LocalModel=(model.SelectedItem as LocalModel)?.Id??"balanced";value.LocalCpuOnly=cpu.IsChecked==true;
                 if(keyLoaded||!string.IsNullOrEmpty(key.Text))value.SetKey(key.Text??"");value.CustomInstruction=instruction.Text??"";value.PostStopPrompt=workflow.Text??"";

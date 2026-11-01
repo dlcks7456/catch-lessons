@@ -112,21 +112,29 @@ public sealed class SettingsWindow : Window
         void ShowAgentOptions(){foreach(var pair in modelPanels)pair.Value.Visibility=pair.Key==(agentPicker.SelectedValue as string)?Visibility.Visible:Visibility.Collapsed;}
         void ReadAgentOptions(Settings s){s.CodexFastMode=fastMode?.IsChecked==true;s.CodexModel=modelInputs["chatgpt"].SelectedValue as string??"gpt-6-luna";s.CodexEffort=effortInputs["chatgpt"].SelectedValue as string??"low";s.ClaudeModel=modelInputs["claude"].SelectedValue as string??"haiku";s.ClaudeEffort=effortInputs["claude"].SelectedValue as string??"low";}
         ShowAgentOptions();
+        Label(connection,"번역 Provider","Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함한 번역을 스트리밍합니다. 요약·후속 작업은 위 Agent를 사용합니다.");
+        var translationProvider=Choice(connection,new[]{new{Id="agent",Name=UiText.T("선택한 Agent")},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.TranslationProvider);
+        translationProvider.Name="TranslationProvider";
         Label(connection, UiText.T("음성 인식 엔진"));
         var engineOptions=LocalModels.WhisperEnabled?new[] { new {Id="whisper",Name=UiText.T("로컬 Whisper (무료)")},new {Id="openai",Name="OpenAI API"} }:new[]{new{Id="openai",Name="OpenAI API"}};
         var engine = Choice(connection,engineOptions,"Name","Id",LocalModels.WhisperEnabled?current.SpeechEngine:"openai");
+        engine.Name="SpeechEngine";
         var localPanel = new StackPanel(); connection.Children.Add(localPanel);
         Label(localPanel, UiText.T("로컬 음성 모델"), UiText.T("첫 시작에 모델을 내려받아 PC에 보관합니다. 음성 인식과 언어 감지에는 API 키나 사용 요금이 없습니다."));
         var localModel = Choice(localPanel, LocalModels.Choices, "DisplayName", "Id", LocalModels.Resolve(current.LocalModel).Id);
         var cpuOnly = new CheckBox { Content = UiText.T("CPU만 사용 (GPU 문제 발생 시)"), IsChecked = current.LocalCpuOnly };
         localPanel.Children.Add(cpuOnly);
         Label(localPanel, UiText.T("가속과 품질"), UiText.T("GPU 가속을 사용할 수 없으면 CPU로 실행합니다. 느리면 가벼운 모델을 선택하세요."));
-        var apiPanel = new StackPanel(); connection.Children.Add(apiPanel);
-        Label(apiPanel,UiText.T("OpenAI API 키"),UiText.T("선택한 음성은 OpenAI로 전송되며 API 비용이 발생합니다. 키는 현재 Windows 사용자 계정으로 암호화합니다."));
-        var apiKey = new PasswordBox(); apiPanel.Children.Add(apiKey); bool keyLoaded=true;
+        var apiPanel = new StackPanel{Name="SharedApiKeyPanel"}; connection.Children.Add(apiPanel);
+        Label(apiPanel,"OpenAI API 키","음성 인식과 번역이 같은 키를 사용합니다. API 음성 인식은 음성을, API 번역은 원문·최근 맥락을 OpenAI로 전송하며 사용 요금이 발생합니다.");
+        var apiKey = new PasswordBox{Name="SharedApiKey"}; apiPanel.Children.Add(apiKey); bool keyLoaded=true;
         try { apiKey.Password=current.GetKey(); } catch { keyLoaded=false; }
-        void EngineChanged() { bool cloud=engine.SelectedValue as string=="openai"; localPanel.Visibility=cloud?Visibility.Collapsed:Visibility.Visible; apiPanel.Visibility=cloud?Visibility.Visible:Visibility.Collapsed; }
+        var apiStatus=new TextBlock{Text="gpt-6-luna · "+UiText.T("최근 8개 구간의 맥락 사용"),TextWrapping=TextWrapping.Wrap};apiPanel.Children.Add(apiStatus);
+        var apiTest=new Button{Content=UiText.T("API 번역 연결 확인")};apiPanel.Children.Add(apiTest);
+        apiTest.Click+=async(_,_)=>{apiTest.IsEnabled=false;try{using var api=new OpenAiTranslator(Value,apiKey.Password,null);await api.CheckConnectionAsync(updateLife.Token);apiStatus.Text="OpenAI API · "+UiText.T("연결됨");}catch(Exception ex){apiStatus.Text=ex.Message;}finally{apiTest.IsEnabled=true;}};
+        void EngineChanged() { bool cloud=engine.SelectedValue as string=="openai"; localPanel.Visibility=cloud?Visibility.Collapsed:Visibility.Visible; apiPanel.Visibility=cloud||translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed; }
         engine.SelectionChanged += (_,_)=>EngineChanged(); EngineChanged();
+        translationProvider.SelectionChanged+=(_,_)=>EngineChanged();
         TextBox ExecutablePath(string title,string path,string provider)
         {
             Label(connection,title);
@@ -308,6 +316,7 @@ public sealed class SettingsWindow : Window
                 if (!Path.IsPathFullyQualified(folder.Text.Trim())) throw new IOException(UiText.T("저장 폴더의 전체 경로를 입력하세요."));
                 Value.OutputFolder = folder.Text.Trim(); Value.CodexPath = codex.Text.Trim();
                 Value.AgentProvider=agentPicker.SelectedValue as string??"chatgpt"; Value.ClaudePath=claude.Text.Trim(); Value.CustomInstruction=custom.Text;
+                Value.TranslationProvider=translationProvider.SelectedValue as string??"agent";
                 ReadAgentOptions(Value);
                 Value.PostStopPrompt=postStop.Text;Value.Shortcuts=shortcutInputs.ToDictionary(p=>p.Key,p=>p.Value.Tag as string??"");
                 Value.SpeechEngine=engine.SelectedValue as string??"whisper"; if(keyLoaded||apiKey.Password.Length>0)Value.SetKey(apiKey.Password);

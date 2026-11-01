@@ -17,6 +17,7 @@ public sealed class CaptionSession
     private WaveFileWriter? recording;
     private SessionStore? store;
     private CodexTranslator? translator;
+    private OpenAiTranslator? apiTranslator;
     public CodexTranslator? Agent => translator;
     public event Action<string>? SessionStarted;
     private readonly Dictionary<int, Caption> pending = new();
@@ -53,7 +54,8 @@ public sealed class CaptionSession
     }
     public async Task StartAsync(CancellationToken token = default)
     {
-        translator = CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work"));
+        if (settings.ApiTranslation) apiTranslator = new OpenAiTranslator(settings);
+        else translator = CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work"));
         transcriber.LanguagesDetected += codes => LanguagesDetected?.Invoke(codes);
         transcriber.Status += text => Status?.Invoke(text);
         transcriber.Partial += text => Partial?.Invoke(text);
@@ -62,10 +64,13 @@ public sealed class CaptionSession
         Status?.Invoke("음성 인식 준비 중…");
         await transcriber.InitializeAsync(settings, token);
         store = new(settings.OutputFolder, settings.TargetLanguage, !settings.TranscriptionOnly);
-        Status?.Invoke("새 Agent 세션을 여는 중…");
-        await translator.StartSessionAsync(store.InternalFolder, token);
-        SessionStarted?.Invoke(translator.SessionId!);
-        File.WriteAllText(Path.Combine(store.InternalFolder, "session.json"), System.Text.Json.JsonSerializer.Serialize(new { sourceLanguage = settings.SourceLanguage, targetLanguage = settings.TargetLanguage, mode = settings.TranscriptionOnly ? "transcription" : "translation", engine = settings.SpeechEngine, model = settings.SpeechEngine == "openai" ? (settings.SourceLanguage == "auto" ? "gpt-transcribe" : "gpt-live-transcribe") : LocalModels.Resolve(settings.LocalModel).File, runtime = transcriber.RuntimeInfo }));
+        if (translator != null)
+        {
+            Status?.Invoke("새 Agent 세션을 여는 중…");
+            await translator.StartSessionAsync(store.InternalFolder, token);
+            SessionStarted?.Invoke(translator.SessionId!);
+        }
+        File.WriteAllText(Path.Combine(store.InternalFolder, "session.json"), System.Text.Json.JsonSerializer.Serialize(new { sourceLanguage = settings.SourceLanguage, targetLanguage = settings.TargetLanguage, mode = settings.TranscriptionOnly ? "transcription" : "translation", translationProvider = settings.TranslationProvider, translationModel = settings.ApiTranslation ? OpenAiTranslator.Model : settings.AgentModel, engine = settings.SpeechEngine, model = settings.SpeechEngine == "openai" ? (settings.SourceLanguage == "auto" ? "gpt-transcribe" : "gpt-live-transcribe") : LocalModels.Resolve(settings.LocalModel).File, runtime = transcriber.RuntimeInfo }));
         if (settings.RecordAudio) recording = new WaveFileWriter(Path.Combine(store.Folder, "audio.wav"), AudioCapture.Format);
         await capture.StartAsync(settings.DeviceId,token);
         if (!settings.TranscriptionOnly) translatorTask = Task.Run(TranslateLoopAsync);
@@ -136,7 +141,7 @@ public sealed class CaptionSession
     {
         try
         {
-            await foreach (var caption in CaptionAssembler.ReadAsync(rawTranscripts.Reader, workStop.Token))
+            await foreach (var caption in settings.ApiTranslation ? rawTranscripts.Reader.ReadAllAsync(workStop.Token) : CaptionAssembler.ReadAsync(rawTranscripts.Reader, workStop.Token))
                 OnTranscript(caption);
         }
         catch (OperationCanceledException) when (workStop.IsCancellationRequested) { }
@@ -151,12 +156,18 @@ public sealed class CaptionSession
             {
                 // Batch accumulated segments so CLI startup does not compound subtitle lag.
                 var batch = new List<Caption> { caption };
-                while (batch.Count < 6 && translations.Reader.TryRead(out var next)) batch.Add(next);
+                while (apiTranslator == null && batch.Count < 6 && translations.Reader.TryRead(out var next)) batch.Add(next);
                 batch.Sort((a, b) => a.Start.CompareTo(b.Start));
                 Dictionary<int, string>? translated = null;
                 try
                 {
-                    translated=await translator!.TranslateBatchAsync(batch,[],workStop.Token);
+                    if (apiTranslator != null)
+                    {
+                        var text = await apiTranslator.TranslateAsync(caption,
+                            text => Updated?.Invoke(caption with { Korean = text, State = "translating" }), workStop.Token);
+                        translated = new() { [caption.Id] = text };
+                    }
+                    else translated=await translator!.TranslateBatchAsync(batch,[],workStop.Token);
                 }
                 catch (OperationCanceledException) when (workStop.IsCancellationRequested) { break; }
                 catch (Exception ex)
@@ -216,8 +227,14 @@ public sealed class CaptionSession
             if (sender != null) await sender;
             if (assemblerTask != null) await assemblerTask;
             if (translatorTask != null) await translatorTask;
+            apiTranslator?.Dispose();
             lock (gate)
-                foreach (var c in pending.Values) store?.Save(c with { State = "interrupted" });
+                foreach (var c in pending.Values)
+                {
+                    var interrupted = c with { State = "interrupted" };
+                    store?.Save(interrupted);
+                    if(settings.ApiTranslation)Updated?.Invoke(interrupted);
+                }
             if (failedTranslations > 0)
                 StopWarning = $"{failedTranslations}개 구간의 번역이 실패했습니다. 원문과 처리 상태는 저장했습니다.";
             store?.Dispose();
