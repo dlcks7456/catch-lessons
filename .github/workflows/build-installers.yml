@@ -24,6 +24,35 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: ./scripts/build-windows-installer.ps1
+      - name: Run packaged Windows diagnostics
+        shell: pwsh
+        run: |
+          foreach ($mode in @('--api-translation-test','--feature-test','--quality-test','--summary-test','--local-test')) {
+            $result=Join-Path $PWD ('artifacts/release-'+$mode.Substring(2)+'.json')
+            $app=Start-Process -FilePath 'artifacts/installer-app/CatchLessons.exe' -ArgumentList $mode,$result -WindowStyle Hidden -PassThru -Wait
+            Get-Content -LiteralPath $result
+            if ($app.ExitCode -ne 0) { throw "Diagnostic failed: $mode" }
+          }
+      - name: Verify fresh installs and upgrade from 1.0.2
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $previous=Join-Path $PWD 'artifacts/previous-release'
+          gh release download v1.0.2 --repo $env:GITHUB_REPOSITORY --pattern 'CatchLessons-Windows-x64-1.0.2.exe' --dir $previous
+          if ($LASTEXITCODE -ne 0) { throw 'Previous installer download failed' }
+          $digest=gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/v1.0.2" --jq '.assets[] | select(.name=="CatchLessons-Windows-x64-1.0.2.exe") | .digest'
+          if ($LASTEXITCODE -ne 0 -or $digest -notmatch '^sha256:[a-fA-F0-9]{64}$') { throw 'Previous installer digest missing' }
+          ./scripts/verify-windows-installer.ps1 -PreviousInstaller (Join-Path $previous 'CatchLessons-Windows-x64-1.0.2.exe') -PreviousSha256 $digest.Substring(7)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CatchLessons-Windows-verification
+          path: |
+            artifacts/release-*.json
+            artifacts/installer-verification.json
+            artifacts/install-mode-*.json
+            artifacts/installer-*.log
       - uses: actions/upload-artifact@v4
         with:
           name: CatchLessons-Windows
@@ -42,6 +71,19 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build unsigned Mac installer
         run: bash installer/macos/build-pkg.sh
+      - name: Verify Mac bundle and package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' Directory.Build.props)"
+          app=artifacts/CatchLessons.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
+          codesign --verify --deep --strict "$app"
+          pkg="$(find artifacts/installers -name "CatchLessons-macOS-*-$version.pkg" -print)"
+          pkgutil --expand-full "$pkg" artifacts/package-verification
+          info="$(find artifacts/package-verification -path '*/CatchLessons.app/Contents/Info.plist' -print)"
+          test -n "$info"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info")" = "$version"
       - uses: actions/upload-artifact@v4
         with:
           name: CatchLessons-${{ matrix.runner }}
