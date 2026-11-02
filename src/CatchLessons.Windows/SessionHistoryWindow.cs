@@ -62,10 +62,11 @@ public sealed class SessionHistoryWindow : Window
                 using var store=SessionStore.OpenExisting(selected,false);
                 if(!note&&!store.Read().Any(c=>c.State is not ("done" or "transcribed"))){status.Text="미완료 번역이 없습니다.";return;}
                 var sessionSettings=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;sessionSettings.TargetLanguage=store.TargetLanguage;
-                var agent=await CodexTranslator.ForSavedSessionAsync(sessionSettings,selected,cancel.Token);
+                using var api=note&&settings.ApiSummary?new OpenAiTranslator(settings):null;
+                var agent=api==null?await CodexTranslator.ForSavedSessionAsync(sessionSettings,selected,cancel.Token):null;
                 if(note)
                 {
-                    store.Flush();await SummaryNotes.CreateAsync(selected,settings.SummaryCategory,agent.WriteNoteAsync,s=>Dispatcher.BeginInvoke(()=>status.Text=s),cancel.Token,null,settings.SummaryLanguage,settings.SelectedSummary,settings.SummaryFormat);
+                    store.Flush();await SummaryNotes.CreateAsync(selected,settings.SummaryCategory,api!=null?api.WriteNoteAsync:agent!.WriteNoteAsync,s=>Dispatcher.BeginInvoke(()=>status.Text=s),cancel.Token,null,settings.SummaryLanguage,settings.SelectedSummary,settings.SummaryFormat);
                     if(settings.OpenFolderAfterSummary)Process.Start(new ProcessStartInfo(selected){UseShellExecute=true});
                 }
                 else
@@ -74,7 +75,7 @@ public sealed class SessionHistoryWindow : Window
                     foreach(var batch in pending.Chunk(6))
                     {
                         status.Text=$"미완료 번역 재개 중 {count}/{pending.Count}";
-                        var result=await agent.TranslateBatchAsync(batch,[],cancel.Token);
+                        var result=await agent!.TranslateBatchAsync(batch,[],cancel.Token);
                         foreach(var c in batch)store.Save(c with{Korean=result[c.Id],State="done"}); count+=batch.Length;
                     }
                     store.Flush();

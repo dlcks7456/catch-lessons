@@ -112,9 +112,10 @@ public sealed class SettingsWindow : Window
         void ShowAgentOptions(){foreach(var pair in modelPanels)pair.Value.Visibility=pair.Key==(agentPicker.SelectedValue as string)?Visibility.Visible:Visibility.Collapsed;}
         void ReadAgentOptions(Settings s){s.CodexFastMode=fastMode?.IsChecked==true;s.CodexModel=modelInputs["chatgpt"].SelectedValue as string??"gpt-6-luna";s.CodexEffort=effortInputs["chatgpt"].SelectedValue as string??"low";s.ClaudeModel=modelInputs["claude"].SelectedValue as string??"haiku";s.ClaudeEffort=effortInputs["claude"].SelectedValue as string??"low";}
         ShowAgentOptions();
-        Label(connection,"번역 Provider","Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함한 번역을 스트리밍합니다. 요약·후속 작업은 위 Agent를 사용합니다.");
+        Label(connection,"번역 Provider","Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함한 번역을 스트리밍합니다. Agent 요약·후속 작업은 위 Agent를 사용합니다.");
         var translationProvider=Choice(connection,new[]{new{Id="agent",Name=UiText.T("선택한 Agent")},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.TranslationProvider);
         translationProvider.Name="TranslationProvider";
+        ComboBox? summaryProvider=null;
         Label(connection, UiText.T("음성 인식 엔진"));
         var engineOptions=LocalModels.WhisperEnabled?new[] { new {Id="whisper",Name=UiText.T("로컬 Whisper (무료)")},new {Id="openai",Name="OpenAI API"} }:new[]{new{Id="openai",Name="OpenAI API"}};
         var engine = Choice(connection,engineOptions,"Name","Id",LocalModels.WhisperEnabled?current.SpeechEngine:"openai");
@@ -126,13 +127,13 @@ public sealed class SettingsWindow : Window
         localPanel.Children.Add(cpuOnly);
         Label(localPanel, UiText.T("가속과 품질"), UiText.T("GPU 가속을 사용할 수 없으면 CPU로 실행합니다. 느리면 가벼운 모델을 선택하세요."));
         var apiPanel = new StackPanel{Name="SharedApiKeyPanel"}; connection.Children.Add(apiPanel);
-        Label(apiPanel,"OpenAI API 키","음성 인식과 번역이 같은 키를 사용합니다. API 음성 인식은 음성을, API 번역은 원문·최근 맥락을 OpenAI로 전송하며 사용 요금이 발생합니다.");
+        Label(apiPanel,"OpenAI API 키","음성 인식·번역·요약이 같은 키를 사용합니다. 선택한 API 기능에 필요한 음성 또는 원문·맥락을 OpenAI로 전송하며 사용 요금이 발생합니다.");
         var apiKey = new PasswordBox{Name="SharedApiKey"}; apiPanel.Children.Add(apiKey); bool keyLoaded=true;
         try { apiKey.Password=current.GetKey(); } catch { keyLoaded=false; }
-        var apiStatus=new TextBlock{Text="gpt-6-luna · "+UiText.T("최근 8개 구간의 맥락 사용"),TextWrapping=TextWrapping.Wrap};apiPanel.Children.Add(apiStatus);
-        var apiTest=new Button{Content=UiText.T("API 번역 연결 확인")};apiPanel.Children.Add(apiTest);
+        var apiStatus=new TextBlock{Text="gpt-6-luna · "+UiText.T("번역: 최근 8개 구간 · 요약: 전체 확정 원문"),TextWrapping=TextWrapping.Wrap};apiPanel.Children.Add(apiStatus);
+        var apiTest=new Button{Content=UiText.T("OpenAI API 연결 확인")};apiPanel.Children.Add(apiTest);
         apiTest.Click+=async(_,_)=>{apiTest.IsEnabled=false;try{using var api=new OpenAiTranslator(Value,apiKey.Password,null);await api.CheckConnectionAsync(updateLife.Token);apiStatus.Text="OpenAI API · "+UiText.T("연결됨");}catch(Exception ex){apiStatus.Text=ex.Message;}finally{apiTest.IsEnabled=true;}};
-        void EngineChanged() { bool cloud=engine.SelectedValue as string=="openai"; localPanel.Visibility=cloud?Visibility.Collapsed:Visibility.Visible; apiPanel.Visibility=cloud||translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed; }
+        void EngineChanged() { bool cloud=engine.SelectedValue as string=="openai"; localPanel.Visibility=cloud?Visibility.Collapsed:Visibility.Visible; apiPanel.Visibility=cloud||translationProvider.SelectedValue as string=="openai"||(summaryProvider?.SelectedValue as string??current.SummaryProvider)=="openai"?Visibility.Visible:Visibility.Collapsed; }
         engine.SelectionChanged += (_,_)=>EngineChanged(); EngineChanged();
         translationProvider.SelectionChanged+=(_,_)=>EngineChanged();
         TextBox ExecutablePath(string title,string path,string provider)
@@ -227,6 +228,10 @@ public sealed class SettingsWindow : Window
         Label(recordingPage, UiText.T("자동 저장"), UiText.T("원문과 번역은 TXT/SRT로 저장합니다. 녹취 모드는 원문만 저장하며, 요약은 선택한 MD/TXT 형식으로 만듭니다."));
 
         var summaryPage = Page(UiText.T("요약"));
+        Label(summaryPage,"요약 Provider","API 요약은 연결 탭의 공통 API Key를 사용합니다. 후속 작업은 선택한 Agent가 실행합니다.");
+        summaryProvider=Choice(summaryPage,new[]{new{Id="agent",Name=UiText.T("선택한 Agent")},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.SummaryProvider);
+        summaryProvider.Name="SummaryProvider";
+        summaryProvider.SelectionChanged+=(_,_)=>EngineChanged();EngineChanged();
         ToggleButton Switch(Panel panel, string text, bool initial)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 9) };
@@ -317,6 +322,7 @@ public sealed class SettingsWindow : Window
                 Value.OutputFolder = folder.Text.Trim(); Value.CodexPath = codex.Text.Trim();
                 Value.AgentProvider=agentPicker.SelectedValue as string??"chatgpt"; Value.ClaudePath=claude.Text.Trim(); Value.CustomInstruction=custom.Text;
                 Value.TranslationProvider=translationProvider.SelectedValue as string??"agent";
+                Value.SummaryProvider=summaryProvider.SelectedValue as string??"agent";
                 ReadAgentOptions(Value);
                 Value.PostStopPrompt=postStop.Text;Value.Shortcuts=shortcutInputs.ToDictionary(p=>p.Key,p=>p.Value.Tag as string??"");
                 Value.SpeechEngine=engine.SelectedValue as string??"whisper"; if(keyLoaded||apiKey.Password.Length>0)Value.SetKey(apiKey.Password);

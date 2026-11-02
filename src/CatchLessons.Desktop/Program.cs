@@ -18,8 +18,10 @@ internal static class Program
             ((Avalonia.Controls.Control)settings.Content!).Measure(new Size(700,740));
             var apiSettings=new DesktopSettings(new Settings{TranslationProvider="openai"});
             ((Avalonia.Controls.Control)apiSettings.Content!).Measure(new Size(700,740));
+            var apiSummarySettings=new DesktopSettings(new Settings{SummaryProvider="openai"});
+            ((Avalonia.Controls.Control)apiSummarySettings.Content!).Measure(new Size(700,740));
             System.IO.File.WriteAllText(args.Length>1?args[1]:"desktop-ui-check.json","{\"passed\":true,\"apiTranslationSettings\":true,\"liveUiActions\":0,\"agentCalls\":0}");
-            window.Close();settings.Close();apiSettings.Close();return;
+            window.Close();settings.Close();apiSettings.Close();apiSummarySettings.Close();return;
         }
         using var instance=new Mutex(true,(OperatingSystem.IsWindows()?"Local\\":"")+"CatchLessons-"+Environment.UserName,out var created);
         if(!created){InstanceActivation.SignalAsync().GetAwaiter().GetResult();return;}

@@ -87,6 +87,19 @@ public static class Diagnostics
         if (mode == "--feature-test") return await FeatureTests.RunAsync();
         if (mode == "--api-translation-test") return await OpenAiTranslationTests.RunAsync();
         if (mode == "--api-segmentation-smoke") return await LocalTests.SmokeAsync(apiTranslation:true);
+        if (mode == "--api-summary-live-test")
+        {
+            var settings=Settings.Load();
+            if(string.IsNullOrWhiteSpace(settings.GetKey()))return JsonSerializer.Serialize(new{skipped=true,reason="No saved OpenAI API key",cloudRequests=0});
+            var folder=Path.Combine(Environment.CurrentDirectory,"artifacts","api-summary-live-test",Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            await File.WriteAllTextAsync(Path.Combine(folder,"original.txt"),"The team decided to release CatchLessons on November 2, 2026. Mina will test Windows. macOS validation is pending. No budget was approved.");
+            using var api=new OpenAiTranslator(settings);using var timeout=new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            var path=await SummaryNotes.CreateAsync(folder,"meeting",api.WriteNoteAsync,_=>{},timeout.Token,targetLanguage:"ko");
+            var note=await File.ReadAllTextAsync(path);
+            if(!note.Any(c=>c>='가'&&c<='힣'))throw new IOException("Expected Korean summary was not returned.");
+            return JsonSerializer.Serialize(new{passed=true,model=OpenAiTranslator.Model,cloudRequests=1,source="synthetic text; no user recordings",path});
+        }
         if (mode == "--api-translation-live-test")
         {
             var settings=Settings.Load();

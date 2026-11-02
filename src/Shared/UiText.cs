@@ -5,10 +5,12 @@ public static class UiText
     public static string Language {get;set;}="en";
     private static readonly Dictionary<string,string> English = new(StringComparer.Ordinal)
     {
+        ["요약 Provider"]="Summary provider",
+        ["API 요약은 연결 탭의 공통 API Key를 사용합니다. 후속 작업은 선택한 Agent가 실행합니다."]="API summaries use the shared API key in Connection settings. Post-recording workflows use the selected agent.",
         ["번역 Provider"]="Translation provider",["선택한 Agent"]="Selected agent",
-        ["Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함한 번역을 스트리밍합니다. 요약·후속 작업은 위 Agent를 사용합니다."]="Agent translation keeps its existing behavior. OpenAI API streams translations with recent context. Summaries and workflows use the agent above.",
-        ["음성 인식과 번역이 같은 키를 사용합니다. API 음성 인식은 음성을, API 번역은 원문·최근 맥락을 OpenAI로 전송하며 사용 요금이 발생합니다."]="Speech recognition and translation share one key. API speech sends audio; API translation sends source text and recent context to OpenAI. API usage is billed separately.",
-        ["최근 8개 구간의 맥락 사용"]="Uses up to 8 recent segments as context",["API 번역 연결 확인"]="Check API translation connection",
+        ["Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함한 번역을 스트리밍합니다. Agent 요약·후속 작업은 위 Agent를 사용합니다."]="Agent translation keeps its existing behavior. OpenAI API streams translations with recent context. Agent summaries and workflows use the agent above.",
+        ["음성 인식·번역·요약이 같은 키를 사용합니다. 선택한 API 기능에 필요한 음성 또는 원문·맥락을 OpenAI로 전송하며 사용 요금이 발생합니다."]="Speech recognition, translation and summaries share one key. API features send the required audio or source text and context to OpenAI. API usage is billed separately.",
+        ["번역: 최근 8개 구간 · 요약: 전체 확정 원문"]="Translation: up to 8 recent segments · Summary: finalized transcript",["OpenAI API 연결 확인"]="Check OpenAI API connection",
         ["설정"]="Settings",["설정 닫기"]="Close settings",["CatchLessons 설정"]="CatchLessons settings",["언어와 입력을 맞추고, 자막에 집중하세요."]="Choose your languages and input, then focus on captions.",
         ["일반"]="General",["앱 버전"]="Version",["Codex에서 세션 열기"]="Open session in Codex",["Claude Desktop에서 세션 열기"]="Open session in Claude Desktop",["녹음 중지 후 Claude Desktop에서 세션 열기"]="Stop recording to open in Claude Desktop",["Agent 세션을 열지 못했습니다: "]="Could not open agent session: ",["Codex 세션을 열지 못했습니다: "]="Could not open Codex session: ",["업데이트 저장소가 설정되지 않았습니다."]="Update repository is not configured.",["업데이트 확인"]="Check for updates",["업데이트"]="Update",["업데이트 준비 중…"]="Preparing update…",["업데이트 설치 시작 중…"]="Starting update…",["관리자 인증과 설치를 기다리는 중…"]="Waiting for administrator authentication and installation…",["업데이트 실패: "]="Update failed: ",["업데이트 확인 중…"]="Checking for updates…",["새 버전이 있지만 설치 파일을 찾지 못했습니다."]="A newer version is available, but no installer was found.",["새 버전 사용 가능: "]="New version available: ",["최신 버전입니다."]="You are up to date.",["업데이트 확인 실패: "]="Update check failed: ",
         ["연결"]="Connection",["언어"]="Languages",["앱 언어"]="App language",["녹음·저장"]="Recording & storage",["요약"]="Summary",["화면"]="Appearance",["단축키"]="Shortcuts",["닫기"]="Close",["확인"]="OK",

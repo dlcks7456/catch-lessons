@@ -33,11 +33,12 @@ internal sealed class DesktopHistory:Window
                 if(summary&&!settings.ShouldSummarize)throw new IOException("요약 카테고리를 먼저 선택하세요.");
                 var recovery=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
                 recovery.TargetLanguage=store.TargetLanguage;
-                var agent=await CodexTranslator.ForSavedSessionAsync(recovery,folder.FullName,cancel.Token);
-                if(summary){store.Flush();await SummaryNotes.CreateAsync(folder.FullName,settings.SummaryCategory,agent.WriteNoteAsync,s=>Avalonia.Threading.Dispatcher.UIThread.Post(()=>status.Text=s),cancel.Token,null,settings.SummaryLanguage,settings.SelectedSummary,settings.SummaryFormat);}
+                using var api=summary&&settings.ApiSummary?new OpenAiTranslator(settings):null;
+                var agent=api==null?await CodexTranslator.ForSavedSessionAsync(recovery,folder.FullName,cancel.Token):null;
+                if(summary){store.Flush();await SummaryNotes.CreateAsync(folder.FullName,settings.SummaryCategory,api!=null?api.WriteNoteAsync:agent!.WriteNoteAsync,s=>Avalonia.Threading.Dispatcher.UIThread.Post(()=>status.Text=s),cancel.Token,null,settings.SummaryLanguage,settings.SelectedSummary,settings.SummaryFormat);}
                 else foreach(var chunk in store.Read().Where(c=>c.State is not("done" or "transcribed")).Chunk(6))
                 {
-                    status.Text="미완료 번역 재개 중…";var output=await agent.TranslateBatchAsync(chunk,[],cancel.Token);foreach(var c in chunk)store.Save(c with{Korean=output[c.Id],State="done"});
+                    status.Text="미완료 번역 재개 중…";var output=await agent!.TranslateBatchAsync(chunk,[],cancel.Token);foreach(var c in chunk)store.Save(c with{Korean=output[c.Id],State="done"});
                 }
                 store.Flush();Load();status.Text="처리 완료";
             }

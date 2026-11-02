@@ -12,7 +12,10 @@ public sealed class Settings
     public string CodexPath { get; set; } = "";
     public string AgentProvider { get; set; } = "chatgpt";
     public string TranslationProvider { get; set; } = "agent";
+    public string SummaryProvider { get; set; } = "agent";
+    [System.Text.Json.Serialization.JsonIgnore] public bool ApiSummary => SummaryProvider == "openai";
     [System.Text.Json.Serialization.JsonIgnore] public bool ApiTranslation => !TranscriptionOnly && TranslationProvider == "openai";
+    [System.Text.Json.Serialization.JsonIgnore] public bool RequiresAgentForCapture => !ApiTranslation && !(TranscriptionOnly && ApiSummary);
     public string UiLanguage {get;set;}="en";
     public string CodexModel {get;set;}="gpt-6-luna";
     public string CodexEffort {get;set;}="low";
@@ -87,6 +90,7 @@ public sealed class Settings
     public void Save()
     {
         if(TranslationProvider is not ("agent" or "openai"))throw new InvalidOperationException("Invalid translation provider.");
+        if(SummaryProvider is not ("agent" or "openai"))throw new InvalidOperationException("Invalid summary provider.");
         if(UiLanguage is not ("en" or "ko"))throw new InvalidOperationException("Invalid app language.");
         foreach(var pair in new[]{(CodexModel,CodexEffort),(ClaudeModel,ClaudeEffort)})
             if(string.IsNullOrWhiteSpace(pair.Item1)||!new[]{"minimal","none","low","medium","high","xhigh","max","ultra"}.Contains(pair.Item2))throw new InvalidOperationException("모델과 effort를 선택하세요.");

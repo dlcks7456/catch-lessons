@@ -40,6 +40,12 @@ internal static class OpenAiTranslationTests
         void Check(bool condition, string message) { if (!condition) throw new Exception(message); checks++; }
         var settings = JsonSerializer.Deserialize<Settings>("{}")!;
         Check(settings.TranslationProvider == "agent" && settings.Segmentation == (1.2, 12), "Legacy defaults remain unchanged");
+        Check(settings.SummaryProvider=="agent"&&!settings.ApiSummary&&settings.RequiresAgentForCapture,"Legacy summary provider remains the selected CLI agent");
+        settings.SummaryProvider="openai";settings.TranscriptionOnly=true;
+        Check(settings.ApiSummary&&!settings.RequiresAgentForCapture,"API summary with transcription-only capture does not require a CLI");
+        settings.TranscriptionOnly=false;
+        Check(settings.RequiresAgentForCapture,"Agent translation still requires the selected CLI even with API summary");
+        settings.SummaryProvider="agent";
         settings.TranslationProvider = "openai";
         Check(settings.ApiTranslation && settings.Segmentation == (1.2, 12), "API translation preserves Whisper audio context");
         settings.SpeechEngine="openai";
@@ -67,11 +73,15 @@ internal static class OpenAiTranslationTests
         var controls=Descendants(dialog).OfType<System.Windows.FrameworkElement>().ToArray();
         var provider=(System.Windows.Controls.ComboBox)controls.Single(c=>c.Name=="TranslationProvider");
         var engine=(System.Windows.Controls.ComboBox)controls.Single(c=>c.Name=="SpeechEngine");
+        var summaryProvider=(System.Windows.Controls.ComboBox)controls.Single(c=>c.Name=="SummaryProvider");
         var keyPanel=controls.Single(c=>c.Name=="SharedApiKeyPanel");
         var keyInput=(System.Windows.Controls.PasswordBox)controls.Single(c=>c.Name=="SharedApiKey");
         Check(keyPanel.Visibility==System.Windows.Visibility.Visible&&keyInput.Password=="test-key", "API translation reveals the existing shared key with local speech");
         provider.SelectedValue="agent";
         Check(keyInput.Password=="test-key", "Switching away from API translation retains the key");
+        summaryProvider.SelectedValue="openai";
+        Check(keyPanel.Visibility==System.Windows.Visibility.Visible&&keyInput.Password=="test-key","API summary alone reveals and reuses the shared key");
+        Check((string)provider.SelectedValue=="agent","Summary provider selection does not change the translation provider");
         engine.SelectedValue="openai";
         Check(keyPanel.Visibility==System.Windows.Visibility.Visible&&keyInput.Password=="test-key", "Selecting API speech reuses the translation key without re-entry");
         dialog.Close();
@@ -144,6 +154,56 @@ internal static class OpenAiTranslationTests
         Check(updates.Any(c => c.State == "translating") && updates.Last().State == "failed" && updates.Last().Korean == "", "Pipeline replaces an interrupted preview with a failed result");
         Check(store.Read().Single().Original == "Keep original" && store.Read().Single().State == "failed", "Failed translation preserves original and state in storage");
         await session.StopAsync();
+
+        var summaryFolder=Path.Combine(Environment.CurrentDirectory,"artifacts","api-summary-test",Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(summaryFolder);
+        var original=new string('a',25000)+"\nFINAL SOURCE FACT";
+        await File.WriteAllTextAsync(Path.Combine(summaryFolder,"original.txt"),original);
+        const string note="# API note\n\n## Findings\n- Preserved source facts.";
+        var summaries=new Reply(()=>Response(Delta(JsonSerializer.Serialize(new{markdown=note}))+Completed));
+        using(var api=new OpenAiTranslator(settings,"test-key",summaries))
+        {
+            var category=new SummaryCategory("custom","Custom notes","KEEP_CATEGORY_RULE");
+            var path=await SummaryNotes.CreateAsync(summaryFolder,category.Id,api.WriteNoteAsync,_=>{},CancellationToken.None,null,"en",category);
+            Check(await File.ReadAllTextAsync(path)==note+"\n","API summary unwraps the response and saves the requested document");
+            Check(summaries.Bodies.Count==3,"Long transcripts use existing chunk reduction and final synthesis through the API");
+            var received=new List<string>();
+            foreach(var body in summaries.Bodies)
+            {
+                using var request=JsonDocument.Parse(body);
+                Check(request.RootElement.GetProperty("reasoning").GetProperty("effort").GetString()=="low"&&request.RootElement.GetProperty("max_output_tokens").GetInt32()==16384&&!request.RootElement.GetProperty("store").GetBoolean(),"Summary has its own output budget and keeps server history disabled");
+                Check(request.RootElement.GetProperty("text").GetProperty("format").GetProperty("strict").GetBoolean(),"API summary requests a strict document schema");
+                var prompt=request.RootElement.GetProperty("input").GetString()!;
+                Check(prompt.Contains("KEEP_CATEGORY_RULE")&&prompt.Contains("Output language: English"),"Summary category and language reach every API stage");
+                using var source=JsonDocument.Parse(prompt[(prompt.LastIndexOf('\n')+1)..]);
+                received.Add(source.RootElement.GetProperty("source").GetString()!);
+            }
+            Check(string.Concat(received.Take(2))==original,"Every original transcript character reaches API summarization");
+            var again=await SummaryNotes.CreateAsync(summaryFolder,category.Id,api.WriteNoteAsync,_=>{},CancellationToken.None,null,"en",category);
+            Check(again!=path&&await File.ReadAllTextAsync(path)==note+"\n","API summary retry does not overwrite an existing note");
+        }
+        foreach(var invalid in new[]{Delta("{\"markdown\":\"draft\"}"),Delta("{\"markdown\":\"\"}")+Completed,Delta("not JSON")+Completed})
+        {
+            using var api=new OpenAiTranslator(settings,"test-key",new Reply(()=>Response(invalid)));
+            var before=Directory.GetFiles(summaryFolder,"*.md").Length;
+            bool failed=false;
+            try{await SummaryNotes.CreateAsync(summaryFolder,"lecture",api.WriteNoteAsync,_=>{},CancellationToken.None);}catch(IOException){failed=true;}
+            Check(failed&&Directory.GetFiles(summaryFolder,"*.md").Length==before&&await File.ReadAllTextAsync(Path.Combine(summaryFolder,"original.txt"))==original,"Incomplete or invalid API summaries do not create final notes or alter the original");
+        }
+        var plain=new Reply(()=>Response(Delta(JsonSerializer.Serialize(new{markdown="Plain API note\n\n1. Source facts."}))+Completed));
+        using(var api=new OpenAiTranslator(settings,"test-key",plain))
+        {
+            var path=await SummaryNotes.CreateAsync(summaryFolder,"lecture",api.WriteNoteAsync,_=>{},CancellationToken.None,null,"en",outputFormat:"txt");
+            using var request=JsonDocument.Parse(plain.Bodies.Last());
+            Check(path.EndsWith(".en.txt")&&(await File.ReadAllTextAsync(path)).StartsWith("Plain API note")&&request.RootElement.GetProperty("input").GetString()!.Contains("Format: plain text"),"API summary preserves plain-text format and language selection");
+        }
+        using(var api=new OpenAiTranslator(settings,"test-key",new Reply(()=>new(HttpStatusCode.OK){Content=new StreamContent(new SplitStream(Delta("{\"markdown\":\"draft"),Completed,new TaskCompletionSource().Task))})))
+        {
+            using var cancel=new CancellationTokenSource();
+            var task=api.WriteNoteAsync("Summary request",cancel.Token);cancel.Cancel();
+            bool stopped=false;try{await task;}catch(OperationCanceledException){stopped=true;}
+            Check(stopped,"API summary cancellation interrupts a pending stream");
+        }
         return JsonSerializer.Serialize(new { passed = checks, cloudRequests = 0, transport = "mock SSE" });
     }
 }

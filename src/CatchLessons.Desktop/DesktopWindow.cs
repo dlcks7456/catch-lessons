@@ -100,7 +100,7 @@ internal sealed class DesktopWindow:Window
         }
         loading=false;ApplyTheme();
         void SaveChoice(){if(loading||busy)return;if(session==null){settings.TranscriptionOnly=mode.SelectedItem as string==UiText.T("녹취 모드");settings.SourceLanguage=(source.SelectedItem as LanguageOption)?.Code??"auto";settings.TargetLanguage=(target.SelectedItem as LanguageOption)?.Code??"ko";}settings.SummaryCategory=(category.SelectedItem as SummaryCategory)?.Id??"none";settings.SummaryEnabled=summarize.IsChecked==true;try{settings.Save();}catch(Exception ex){status.Text=UiText.Status(ex.Message);}}
-        mode.SelectionChanged+=async(_,_)=>{SaveChoice();if(!loading&&settings.TranslationProvider=="openai")await Check();};source.SelectionChanged+=(_,_)=>SaveChoice();target.SelectionChanged+=(_,_)=>SaveChoice();category.SelectionChanged+=(_,_)=>SaveChoice();summarize.IsCheckedChanged+=(_,_)=>SaveChoice();
+        mode.SelectionChanged+=async(_,_)=>{SaveChoice();if(!loading&&(settings.TranslationProvider=="openai"||settings.ApiSummary))await Check();};source.SelectionChanged+=(_,_)=>SaveChoice();target.SelectionChanged+=(_,_)=>SaveChoice();category.SelectionChanged+=(_,_)=>SaveChoice();summarize.IsCheckedChanged+=(_,_)=>SaveChoice();
         Opened+=async(_,_)=>await Check();
         Closing+=async(_,e)=>{if(BackgroundEnabled){e.Cancel=true;Hide();return;}if(closing)return;if(busy){e.Cancel=true;operation?.Cancel();return;}if(session!=null){e.Cancel=true;await StartStop();closing=true;Close();}};
         Closed+=(_,_)=>{probe?.Cancel();operation?.Cancel();};
@@ -119,7 +119,7 @@ internal sealed class DesktopWindow:Window
     private async Task Check()
     {
         probe?.Cancel();using var cancel=new CancellationTokenSource();probe=cancel;connected=false;connection.Text=UiText.T("연결 확인 중…");agentWarning.IsVisible=false;var failed=new List<string>();var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
-        if(snapshot.ApiTranslation)
+        if(!snapshot.RequiresAgentForCapture)
         {
             try{await OpenAiTranslator.CheckConnectionAsync(snapshot,cancel.Token);if(probe==cancel){connected=true;connection.Text="OpenAI API · "+UiText.T("연결됨");}}
             catch(Exception ex){if(probe==cancel)connection.Text="OpenAI API · "+ex.Message;}
@@ -196,9 +196,13 @@ internal sealed class DesktopWindow:Window
     private async Task Summarize(string folder,CodexTranslator? agent,CancellationToken token=default,bool manual=false)
     {
         if(!SummaryNotes.CanRun(settings,manual))return;
-        agent ??= await CodexTranslator.ForSavedSessionAsync(settings,folder,token);
-        if(settings.ApiTranslation)lastAgent=agent;
-        await SummaryNotes.CreateAsync(folder,settings.SummaryCategory,agent.WriteNoteAsync,s=>Dispatcher.UIThread.Post(()=>Progress(s)),token,null,settings.SummaryLanguage,settings.SelectedSummary,settings.SummaryFormat);
+        using var api=settings.ApiSummary?new OpenAiTranslator(settings):null;
+        if(api==null)
+        {
+            agent ??= await CodexTranslator.ForSavedSessionAsync(settings,folder,token);
+            if(settings.ApiTranslation)lastAgent=agent;
+        }
+        await SummaryNotes.CreateAsync(folder,settings.SummaryCategory,api!=null?api.WriteNoteAsync:agent!.WriteNoteAsync,s=>Dispatcher.UIThread.Post(()=>Progress(s)),token,null,settings.SummaryLanguage,settings.SelectedSummary,settings.SummaryFormat);
         if(settings.OpenFolderAfterSummary)OpenFolder(folder);
     }
     private async Task RetrySummary()

@@ -55,7 +55,7 @@ public sealed class CaptionSession
     public async Task StartAsync(CancellationToken token = default)
     {
         if (settings.ApiTranslation) apiTranslator = new OpenAiTranslator(settings);
-        else translator = CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work"));
+        else if(settings.RequiresAgentForCapture) translator = CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work"));
         transcriber.LanguagesDetected += codes => LanguagesDetected?.Invoke(codes);
         transcriber.Status += text => Status?.Invoke(text);
         transcriber.Partial += text => Partial?.Invoke(text);

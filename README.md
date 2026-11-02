@@ -21,9 +21,10 @@ I built CatchLessons to make studying more convenient. It is not a professional 
 - **Your agent:** use a signed-in Codex or Claude CLI conversation per recording. Choose a model, effort and optional translation instruction. Codex Fast mode is optional and can consume more of your allowance.
 - **Local or API speech recognition:** local Whisper is the default. OpenAI API speech recognition is an alternative and requires an API key.
 - **OpenAI API translation:** choose it separately in Connection settings. Speech recognition and translation reuse one securely stored API key. Translation streams through the Responses API (`gpt-6-luna`, reasoning disabled), with the topic, terminology, translation instruction and up to eight recent source/translation pairs (12,000 characters) as context.
+- **OpenAI API summaries:** select **Settings → Summary → Summary provider → OpenAI API** independently of translation. It reuses the same key as speech recognition and translation. Manual, stop-time and retry summaries retain category prompts, output language, MD/TXT format and long-transcript reduction. Summaries use `gpt-6-luna` with low reasoning, up to 16,384 output tokens and a five-minute timeout per request. Incomplete results are rejected; existing notes and transcripts are preserved.
 - **Background app:** close the window to hide it; restore or quit from the tray/menu bar.
 
-With agent translation, summaries and translations share the recording's agent conversation. A manual summary and a translation request are serialized through that conversation, so a long summary can delay later translations. A summary covers finalized source text; an unfinished preview may not yet be included. API translation runs independently; summaries and post-recording workflows still use the selected Codex/Claude agent, initialized when needed. API translation can start without a signed-in CLI.
+When both providers are set to the selected agent, summaries and translations share the recording's agent conversation and run serially, so a long summary can delay later translations. API summaries run independently of translation and use finalized source text, not the unfinished preview or the translation context window. API-only translation or transcription with API summaries can start without a signed-in CLI. Post-recording Skill/MCP workflows always require the selected Codex/Claude agent, initialized when needed. Existing settings continue to use agent summaries until you select OpenAI API. API summary requests use `store: false` and send the recorded source and category instructions to OpenAI.
 
 With API speech recognition plus API translation, Fast uses 0.4 seconds of silence / 2 seconds maximum, Balanced 0.6 / 3, and More context 0.9 / 6. Local Whisper retains its existing segmentation to avoid degrading recognition at short audio boundaries; continuous speech can therefore take up to the selected 8 / 12 / 20 seconds before transcription, plus processing time. API translation skips the agent path's extra sentence-assembly wait and displays translation as it arrives. Source text is finalized before translation starts; this is near-realtime caption translation, not word-by-word simultaneous interpretation. For the lowest caption latency, select API speech recognition as well. Network, model latency and queued requests affect delay. Failed or interrupted translations retain the original and are marked incomplete; preview text is not exported as a final translation. Recent context is local to one recording and API requests use `store: false`.
 
@@ -31,7 +32,7 @@ After stopping, the captions remain visible and can be summarized again until a 
 
 ## 📦 Download and install
 
-The source version is **1.1.0**. The links below remain the published **1.0.2** installers; the API translation feature requires a build from the updated source until a new release is published.
+The source version is **1.2.0**. The links below remain the published **1.0.2** installers; API translation and summaries require a build from the updated source until a new release is published.
 
 | Platform | Installer | Status |
 | --- | --- | --- |
@@ -47,9 +48,9 @@ The Windows installer is currently **unsigned**, so Windows reputation checks ma
 
 ## 🚀 Start
 
-1. For agent translation, summaries or workflows, install and sign in to [Codex CLI](https://developers.openai.com/codex/cli) or [Claude Code](https://code.claude.com/docs/en/setup).
+1. For agent translation, agent summaries or workflows, install and sign in to [Codex CLI](https://developers.openai.com/codex/cli) or [Claude Code](https://code.claude.com/docs/en/setup).
 2. Run the installer and choose whether to include local Whisper.
-3. In **Settings → Connection**, choose the agent, translation provider and speech engine. If either function uses OpenAI API, enter the shared API key. Agent installation/sign-in is only needed for agent translation, summaries and workflows.
+3. In **Settings → Connection**, choose the agent, translation provider and speech engine. Choose the summary provider in **Settings → Summary**. If any function uses OpenAI API, enter the shared key in Connection. Agent installation/sign-in is only needed for agent translation, agent summaries and workflows.
 4. Choose source language (auto-detect or fixed), translation language, and an optional topic hint. Korean is the default translation language; the app interface defaults to English and can be switched to Korean.
 5. Start recording. Pause/resume as needed. Stop to save captions and, if enabled, create a summary.
 

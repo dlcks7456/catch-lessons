@@ -89,7 +89,7 @@ public partial class MainWindow : Window
     {
         connectionCheck?.Cancel();using var cancel=new CancellationTokenSource();connectionCheck=cancel;
         var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
-        if (snapshot.ApiTranslation)
+        if (!snapshot.RequiresAgentForCapture)
         {
             agentConnected=false; ShowAgentWarnings([]); AgentConnectionText.Text="OpenAI API · "+UiText.T("연결 확인 중…");
             if(session==null&&!busy)StartButton.IsEnabled=false;
@@ -180,7 +180,7 @@ public partial class MainWindow : Window
     {
         if (loadingMode || busy || session != null || ModePicker.SelectedValue is not bool only) return;
         settings.TranscriptionOnly = only;
-        if(settings.TranslationProvider=="openai")_=CheckAgentConnectionAsync();
+        if(settings.TranslationProvider=="openai"||settings.ApiSummary)_=CheckAgentConnectionAsync();
         RefreshSummaryControls();
         try { settings.Save(); } catch (Exception ex) { StatusText.Text = UiText.Status(ex.Message); }
     }
@@ -449,13 +449,18 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = true;
         using var cancel = new CancellationTokenSource();
         summaryCancellation = cancel;
-        ShowProcessing(UiText.T("전체 원문 요약 중"), category.Name + UiText.T(" · Codex 응답을 기다리고 있습니다."), true, true);
+        ShowProcessing(UiText.T("전체 원문 요약 중"), category.Name + " · " + (settings.ApiSummary ? "OpenAI API" : settings.AgentProvider=="claude" ? "Claude" : "Codex"), true, true);
         try
         {
-            var codex = lastAgent ?? (settings.ApiTranslation ? await CodexTranslator.ForSavedSessionAsync(settings,folder,cancel.Token) : CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work")));
-            if(codex.SessionId==null){Directory.CreateDirectory(SessionStore.InternalFor(folder));await codex.StartSessionAsync(SessionStore.InternalFor(folder),cancel.Token);}
-            if(settings.ApiTranslation)lastAgent=codex;
-            var path = await SummaryNotes.CreateAsync(folder, settings.SummaryCategory, codex.WriteNoteAsync,
+            using var api = settings.ApiSummary ? new OpenAiTranslator(settings) : null;
+            CodexTranslator? codex = null;
+            if(api==null)
+            {
+                codex = lastAgent ?? (settings.ApiTranslation ? await CodexTranslator.ForSavedSessionAsync(settings,folder,cancel.Token) : CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work")));
+                if(codex.SessionId==null){Directory.CreateDirectory(SessionStore.InternalFor(folder));await codex.StartSessionAsync(SessionStore.InternalFor(folder),cancel.Token);}
+                if(settings.ApiTranslation)lastAgent=codex;
+            }
+            var path = await SummaryNotes.CreateAsync(folder, settings.SummaryCategory, api!=null ? api.WriteNoteAsync : codex!.WriteNoteAsync,
                 text => Dispatch(() =>
                 {
                     if (summaryCancellation != cancel || cancel.IsCancellationRequested) return;
