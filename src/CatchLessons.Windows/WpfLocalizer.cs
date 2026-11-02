@@ -14,7 +14,7 @@ internal static class WpfLocalizer
     }
     public static void Apply(DependencyObject root)
     {
-        if(root is TextBlock text&&text.Name is not ("PartialText" or "AgentWarningText" or "SessionIdText" or "ProcessingDetail"))Translate(root,TextBlock.TextProperty);
+        if(root is TextBlock text&&text.Name is not ("PartialText" or "TranslationPreviewText" or "AgentWarningText" or "SessionIdText" or "ProcessingDetail"))Translate(root,TextBlock.TextProperty);
         if(root is ContentControl)Translate(root,ContentControl.ContentProperty);
         if(root is HeaderedContentControl)Translate(root,HeaderedContentControl.HeaderProperty);
         if(root is FrameworkElement)Translate(root,FrameworkElement.ToolTipProperty);

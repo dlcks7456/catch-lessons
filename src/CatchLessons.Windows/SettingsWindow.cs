@@ -60,7 +60,8 @@ public sealed class SettingsWindow : Window
         StackPanel Page(string title)
         {
             var panel = new StackPanel { Margin = new Thickness(1, 6, 12, 4) };
-            tabs.Items.Add(new TabItem { Header = title, Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } });
+            var tab=new TabItem { Header = title, Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } };
+            panel.Tag=tab;tabs.Items.Add(tab);
             return panel;
         }
         void Label(Panel panel, string title, string? help = null)
@@ -89,18 +90,69 @@ public sealed class SettingsWindow : Window
         updateCheck.Click+=async(_,_)=>{updateCheck.IsEnabled=false;updateDownload.Visibility=Visibility.Collapsed;try{updateStatus.Text=UiText.T("업데이트 확인 중…");update=await UpdateService.CheckAsync(false,updateLife.Token);updateStatus.Text=update.Newer?(update.Download==null?UiText.T("새 버전이 있지만 설치 파일을 찾지 못했습니다."):UiText.T("새 버전 사용 가능: ")+update.Version):UiText.T("최신 버전입니다.");updateDownload.Visibility=update.Newer&&update.Download!=null?Visibility.Visible:Visibility.Collapsed;}catch(OperationCanceledException){}catch(Exception ex){updateStatus.Text=UiText.T("업데이트 확인 실패: ")+ex.Message;}finally{updateCheck.IsEnabled=UpdateService.RepositoryConfigured;}};
         updateDownload.Click+=async(_,_)=>{updateCheck.IsEnabled=false;updateDownload.IsEnabled=false;updateProgress.Visibility=Visibility.Visible;updateProgress.IsIndeterminate=true;try{UpdateService.WindowsInstallLocation();updateStatus.Text=UiText.T("업데이트 준비 중…");var progress=new Progress<int?>(n=>{updateProgress.IsIndeterminate=!n.HasValue;if(n.HasValue)updateProgress.Value=n.Value;updateStatus.Text=UiText.T("업데이트 준비 중…")+(n.HasValue?" "+n+"%":"");});var path=await UpdateService.DownloadAsync(update!,progress,updateLife.Token);updateProgress.IsIndeterminate=true;updateStatus.Text=UiText.T("업데이트 설치 시작 중…");if(!saveBeforeUpdate())throw new IOException("Could not save settings before updating.");UpdateService.StartWindowsInstaller(path);UpdateStarted=true;Close();}catch(OperationCanceledException){}catch(Exception ex){updateProgress.Visibility=Visibility.Collapsed;updateStatus.Text=UiText.T("업데이트 실패: ")+ex.Message;updateCheck.IsEnabled=true;updateDownload.IsEnabled=true;}};
         var connection = Page(UiText.T("연결"));
-        Label(connection, "Agent", UiText.T("녹음마다 새로운 대화를 만들고, 그 안에서 번역과 요약을 이어갑니다. 선택하면 실제 응답으로 연결을 확인합니다."));
-        var agentPicker = Choice(connection, new[] { new { Id="chatgpt", Name="ChatGPT", Icon=FindResource("Icon-brand-openai") }, new { Id="claude", Name="Claude", Icon=FindResource("Icon-brand-claude") } }, "", "Id", current.AgentProvider);
+        Label(connection,"번역 Provider");
+        var translationProvider=Choice(connection,new[]{new{Id="agent",Name="Agent"},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.TranslationProvider);
+        translationProvider.Name="TranslationProvider";
+        string apiKey="";bool keyLoaded=true,apiDialogOpen=false,revertingApi=false,keySaveFailed=false,showAgentConfiguration=false;Func<bool>? apiKeySaved=null;
+        try{apiKey=current.GetKey();}catch{keyLoaded=false;}
+        bool EditApiKey()
+        {
+            if(apiDialogOpen)return false;
+            keySaveFailed=false;
+            apiDialogOpen=true;
+            var previousKey=apiKey;var previousLoaded=keyLoaded;var previousProtected=Value.ProtectedKey;
+            try
+            {
+                var dialog=new ApiKeyWindow(Value,apiKey,keyLoaded){Owner=this};
+                if(dialog.ShowDialog()!=true)return false;
+                apiKey=dialog.Key;keyLoaded=true;
+            }
+            finally{apiDialogOpen=false;}
+            if(apiKeySaved?.Invoke()!=false)return true;
+            apiKey=previousKey;keyLoaded=previousLoaded;Value.ProtectedKey=previousProtected;keySaveFailed=true;return false;
+        }
+        Button KeyRow(Panel panel,ComboBox picker,string name)
+        {
+            var at=panel.Children.IndexOf(picker);var margin=picker.Margin;panel.Children.Remove(picker);
+            var row=new Grid{Name=picker.Name+"Row",Margin=margin};row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+            picker.Margin=new Thickness(0,0,8,0);row.Children.Add(picker);
+            var button=IconButton("key",UiText.T("공통 API Key 관리"));button.Name=name;button.Width=button.Height=36;button.Margin=new Thickness(0);
+            button.ToolTip=UiText.T("공통 API Key 관리");System.Windows.Automation.AutomationProperties.SetName(button,UiText.T("공통 API Key 관리"));
+            Grid.SetColumn(button,1);row.Children.Add(button);panel.Children.Insert(at,row);button.Click+=(_,_)=>EditApiKey();return button;
+        }
+        void ApiSelection(ComboBox picker,Button button)
+        {
+            var previous=picker.SelectedValue as string;
+            picker.SelectionChanged+=(_,_)=>
+            {
+                if(revertingApi)return;
+                if(IsLoaded&&IsVisible&&picker.SelectedValue as string=="openai")
+                {
+                    var hadKey=!string.IsNullOrWhiteSpace(apiKey);
+                    if(!EditApiKey()&&(!hadKey||keySaveFailed)){revertingApi=true;picker.SelectedValue=previous;revertingApi=false;}
+                }
+                previous=picker.SelectedValue as string;
+            };
+        }
+        var translationKey=KeyRow(connection,translationProvider,"TranslationApiKey");
+        var keyHint=new TextBlock{Text=UiText.T("API Key는 음성 인식·번역·요약에서 공유합니다. 오른쪽 키 버튼에서 관리하세요."),TextWrapping=TextWrapping.Wrap,FontSize=12,Margin=new Thickness(0,0,0,12)};
+        keyHint.SetResourceReference(TextBlock.ForegroundProperty,"Muted");connection.Children.Add(keyHint);
+        connection.Name="ConnectionSettings";
+        var agentPanel=new StackPanel{Name="AgentOptions"};connection.Children.Add(agentPanel);
+        var codexPathPanel=new StackPanel();var claudePathPanel=new StackPanel();
+        Label(agentPanel, "Agent");
+        var agentPicker = Choice(agentPanel, new[] { new { Id="chatgpt", Name="ChatGPT", Icon=FindResource("Icon-brand-openai") }, new { Id="claude", Name="Claude", Icon=FindResource("Icon-brand-claude") } }, "", "Id", current.AgentProvider);
         agentPicker.ItemTemplate = (DataTemplate)FindResource("AgentChoiceTemplate");
-        var agentStatus = new TextBlock { Text=UiText.T("Agent를 선택하면 연결을 확인합니다."), TextWrapping=TextWrapping.Wrap }; connection.Children.Add(agentStatus);
+        var agentStatus = new TextBlock { Text=UiText.T("Agent를 선택하면 연결을 확인합니다."), TextWrapping=TextWrapping.Wrap }; agentPanel.Children.Add(agentStatus);
         var agentTest = IconButton("arrows-clockwise", UiText.T("Agent 연결 다시 확인"));
-        connection.Children.Remove(agentPicker);
+        agentPanel.Children.Remove(agentPicker);
         var agentRow=new Grid {Margin=new Thickness(0,6,0,16)};agentRow.ColumnDefinitions.Add(new());agentRow.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
-        agentPicker.Margin=new Thickness(0,0,8,0);Grid.SetColumn(agentTest,1);agentRow.Children.Add(agentPicker);agentRow.Children.Add(agentTest);connection.Children.Insert(connection.Children.IndexOf(agentStatus),agentRow);
+        agentPicker.Margin=new Thickness(0,0,8,0);Grid.SetColumn(agentTest,1);agentRow.Children.Add(agentPicker);agentRow.Children.Add(agentTest);agentPanel.Children.Insert(agentPanel.Children.IndexOf(agentStatus),agentRow);
         var modelInputs=new Dictionary<string,ComboBox>();var effortInputs=new Dictionary<string,ComboBox>();var modelPanels=new Dictionary<string,StackPanel>();Action? optionsChanged=null;ToggleButton? fastMode=null;
+        CancellationTokenSource? agentCheck=null;
         foreach(var provider in new[]{"chatgpt","claude"})
         {
-            var panel=new StackPanel();connection.Children.Add(panel);modelPanels[provider]=panel;
+            var panel=new StackPanel();agentPanel.Children.Add(panel);modelPanels[provider]=panel;
             Label(panel,UiText.T("모델 · 다음 녹음부터 적용"));
             var model=Choice(panel,AgentModels.Read(provider),"Id","Id",provider=="claude"?current.ClaudeModel:current.CodexModel);modelInputs[provider]=model;
             Label(panel,UiText.T("Effort · 낮을수록 속도 우선"));
@@ -109,50 +161,56 @@ public sealed class SettingsWindow : Window
             model.SelectionChanged+=(_,_)=>{var selected=effort.SelectedValue as string;effort.ItemsSource=AgentModels.Efforts(provider,model.SelectedValue as string??"");effort.SelectedValue=selected??"low";if(effort.SelectedIndex<0)effort.SelectedIndex=0;optionsChanged?.Invoke();};
             effort.SelectionChanged+=(_,_)=>optionsChanged?.Invoke();
         }
-        void ShowAgentOptions(){foreach(var pair in modelPanels)pair.Value.Visibility=pair.Key==(agentPicker.SelectedValue as string)?Visibility.Visible:Visibility.Collapsed;}
+        void ShowAgentOptions()
+        {
+            agentPanel.Visibility=translationProvider.SelectedValue as string=="agent"||showAgentConfiguration?Visibility.Visible:Visibility.Collapsed;
+            if(agentPanel.Visibility!=Visibility.Visible){agentCheck?.Cancel();VerifiedAgentKey=null;}
+            foreach(var pair in modelPanels)pair.Value.Visibility=pair.Key==(agentPicker.SelectedValue as string)?Visibility.Visible:Visibility.Collapsed;
+            codexPathPanel.Visibility=agentPicker.SelectedValue as string=="chatgpt"?Visibility.Visible:Visibility.Collapsed;
+            claudePathPanel.Visibility=agentPicker.SelectedValue as string=="claude"?Visibility.Visible:Visibility.Collapsed;
+        }
         void ReadAgentOptions(Settings s){s.CodexFastMode=fastMode?.IsChecked==true;s.CodexModel=modelInputs["chatgpt"].SelectedValue as string??"gpt-6-luna";s.CodexEffort=effortInputs["chatgpt"].SelectedValue as string??"low";s.ClaudeModel=modelInputs["claude"].SelectedValue as string??"haiku";s.ClaudeEffort=effortInputs["claude"].SelectedValue as string??"low";}
         ShowAgentOptions();
-        Label(connection,"번역 Provider","Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함한 번역을 스트리밍합니다. Agent 요약·후속 작업은 위 Agent를 사용합니다.");
-        var translationProvider=Choice(connection,new[]{new{Id="agent",Name=UiText.T("선택한 Agent")},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.TranslationProvider);
-        translationProvider.Name="TranslationProvider";
         ComboBox? summaryProvider=null;
         Label(connection, UiText.T("음성 인식 엔진"));
         var engineOptions=LocalModels.WhisperEnabled?new[] { new {Id="whisper",Name=UiText.T("로컬 Whisper (무료)")},new {Id="openai",Name="OpenAI API"} }:new[]{new{Id="openai",Name="OpenAI API"}};
         var engine = Choice(connection,engineOptions,"Name","Id",LocalModels.WhisperEnabled?current.SpeechEngine:"openai");
         engine.Name="SpeechEngine";
+        var speechKey=KeyRow(connection,engine,"SpeechApiKey");
         var localPanel = new StackPanel(); connection.Children.Add(localPanel);
         Label(localPanel, UiText.T("로컬 음성 모델"), UiText.T("첫 시작에 모델을 내려받아 PC에 보관합니다. 음성 인식과 언어 감지에는 API 키나 사용 요금이 없습니다."));
         var localModel = Choice(localPanel, LocalModels.Choices, "DisplayName", "Id", LocalModels.Resolve(current.LocalModel).Id);
         var cpuOnly = new CheckBox { Content = UiText.T("CPU만 사용 (GPU 문제 발생 시)"), IsChecked = current.LocalCpuOnly };
         localPanel.Children.Add(cpuOnly);
         Label(localPanel, UiText.T("가속과 품질"), UiText.T("GPU 가속을 사용할 수 없으면 CPU로 실행합니다. 느리면 가벼운 모델을 선택하세요."));
-        var apiPanel = new StackPanel{Name="SharedApiKeyPanel"}; connection.Children.Add(apiPanel);
-        Label(apiPanel,"OpenAI API 키","음성 인식·번역·요약이 같은 키를 사용합니다. 선택한 API 기능에 필요한 음성 또는 원문·맥락을 OpenAI로 전송하며 사용 요금이 발생합니다.");
-        var apiKey = new PasswordBox{Name="SharedApiKey"}; apiPanel.Children.Add(apiKey); bool keyLoaded=true;
-        try { apiKey.Password=current.GetKey(); } catch { keyLoaded=false; }
-        var apiStatus=new TextBlock{Text="gpt-6-luna · "+UiText.T("번역: 최근 8개 구간 · 요약: 전체 확정 원문"),TextWrapping=TextWrapping.Wrap};apiPanel.Children.Add(apiStatus);
-        var apiTest=new Button{Content=UiText.T("OpenAI API 연결 확인")};apiPanel.Children.Add(apiTest);
-        apiTest.Click+=async(_,_)=>{apiTest.IsEnabled=false;try{using var api=new OpenAiTranslator(Value,apiKey.Password,null);await api.CheckConnectionAsync(updateLife.Token);apiStatus.Text="OpenAI API · "+UiText.T("연결됨");}catch(Exception ex){apiStatus.Text=ex.Message;}finally{apiTest.IsEnabled=true;}};
-        void EngineChanged() { bool cloud=engine.SelectedValue as string=="openai"; localPanel.Visibility=cloud?Visibility.Collapsed:Visibility.Visible; apiPanel.Visibility=cloud||translationProvider.SelectedValue as string=="openai"||(summaryProvider?.SelectedValue as string??current.SummaryProvider)=="openai"?Visibility.Visible:Visibility.Collapsed; }
+        void EngineChanged() { localPanel.Visibility=engine.SelectedValue as string=="openai"?Visibility.Collapsed:Visibility.Visible; }
         engine.SelectionChanged += (_,_)=>EngineChanged(); EngineChanged();
-        translationProvider.SelectionChanged+=(_,_)=>EngineChanged();
-        TextBox ExecutablePath(string title,string path,string provider)
+        translationProvider.SelectionChanged+=(_,_)=>{showAgentConfiguration=false;ShowAgentOptions();};
+        ApiSelection(translationProvider,translationKey);ApiSelection(engine,speechKey);
+        TextBox ExecutablePath(Panel panel,string title,string path,string provider)
         {
-            Label(connection,title);
+            Label(panel,title);
             var input=new TextBox{Text=string.IsNullOrWhiteSpace(path)?CodexTranslator.DetectPath(provider):path,IsReadOnly=true,Cursor=Cursors.Hand,ToolTip=UiText.T("클릭하여 실행 파일 선택")};
             void Browse(){var dialog=new OpenFileDialog{Title=title,Filter=UiText.T("CLI 실행 파일|*.exe;*.js|모든 파일|*.*"),CheckFileExists=true};if(dialog.ShowDialog(this)==true)input.Text=dialog.FileName;}
             input.PreviewMouseLeftButtonDown+=(_,e)=>{e.Handled=true;Browse();};input.PreviewKeyDown+=(_,e)=>{if(e.Key is Key.Enter or Key.Space){e.Handled=true;Browse();}};
-            connection.Children.Add(input);return input;
+            panel.Children.Add(input);return input;
         }
-        var codex=ExecutablePath(UiText.T("Codex 실행 경로"),current.CodexPath,"chatgpt");
-        var claude=ExecutablePath(UiText.T("Claude 실행 경로"),current.ClaudePath,"claude");
-        Label(connection,"Custom Instruction",UiText.T("번역 방식·말투·용어 규칙을 설정하세요. 시작 시 세션 지침으로 고정되며 다음 녹음부터 변경값을 적용합니다."));
-        var custom = new TextBox {Text=current.CustomInstruction,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=140,MaxLength=8000,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}; connection.Children.Add(custom);
-        Label(connection,UiText.T("중지 후 후속 작업"),UiText.T("요약 완료 후 같은 Agent가 실행합니다. 설치된 Skill·MCP를 사용하며 기존 권한·승인 정책을 따릅니다. 비워두면 실행하지 않습니다."));
-        var postStop = new TextBox {Text=current.PostStopPrompt,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=140,MaxLength=8000,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};connection.Children.Add(postStop);
-        CancellationTokenSource? agentCheck=null;
+        agentPanel.Children.Add(codexPathPanel);agentPanel.Children.Add(claudePathPanel);
+        var codex=ExecutablePath(codexPathPanel,UiText.T("Codex 실행 경로"),current.CodexPath,"chatgpt");
+        var claude=ExecutablePath(claudePathPanel,UiText.T("Claude 실행 경로"),current.ClaudePath,"claude");
+        var instructions=Page(UiText.T("지침"));
+        instructions.Name="InstructionsSettings";
+        Label(instructions,"Custom Instruction",UiText.T("번역 방식·말투·용어 규칙을 설정하세요. 시작 시 세션 지침으로 고정되며 다음 녹음부터 변경값을 적용합니다."));
+        var custom = new TextBox {Name="CustomInstruction",Text=current.CustomInstruction,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=140,MaxLength=8000,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}; instructions.Children.Add(custom);
+        Label(instructions,UiText.T("중지 후 후속 작업"),UiText.T("요약 완료 후 같은 Agent가 실행합니다. 설치된 Skill·MCP를 사용하며 기존 권한·승인 정책을 따릅니다. 비워두면 실행하지 않습니다."));
+        var postStop = new TextBox {Name="PostStopPrompt",Text=current.PostStopPrompt,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=140,MaxLength=8000,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};instructions.Children.Add(postStop);
+        void OpenAgentConfiguration(){showAgentConfiguration=true;ShowAgentOptions();tabs.SelectedItem=connection.Tag;}
+        var workflowAgent=new Button{Content=UiText.T("Agent 설정"),HorizontalAlignment=HorizontalAlignment.Left};instructions.Children.Add(workflowAgent);workflowAgent.Click+=(_,_)=>OpenAgentConfiguration();
+        void ShowWorkflowAgent()=>workflowAgent.Visibility=translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed;
+        translationProvider.SelectionChanged+=(_,_)=>ShowWorkflowAgent();ShowWorkflowAgent();
         async Task CheckAgent()
         {
+            if(agentPanel.Visibility!=Visibility.Visible)return;
             agentCheck?.Cancel(); using var check=new CancellationTokenSource(); agentCheck=check; VerifiedAgentKey=null;
             var candidate = new Settings {AgentProvider=agentPicker.SelectedValue as string??"chatgpt",CodexPath=codex.Text.Trim(),ClaudePath=claude.Text.Trim()};
             ReadAgentOptions(candidate);
@@ -161,7 +219,7 @@ public sealed class SettingsWindow : Window
             catch(Exception ex){if(agentCheck==check)agentStatus.Text=check.IsCancellationRequested?UiText.T("연결 확인 취소"):UiText.Status(ex.Message);}
             finally {if(agentCheck==check)agentCheck=null;}
         }
-        optionsChanged=()=>{if(IsVisible)_=CheckAgent();};
+        optionsChanged=()=>{if(IsVisible&&agentPanel.Visibility==Visibility.Visible)_=CheckAgent();};
         agentPicker.SelectionChanged += async (_,_)=>{ShowAgentOptions();if(IsVisible)await CheckAgent();};
         agentTest.Click += async (_,_)=>await CheckAgent();
 
@@ -202,9 +260,13 @@ public sealed class SettingsWindow : Window
         };
         Label(recordingPage, UiText.T("자막 확정 속도"), UiText.T("문맥을 더 기다리면 자연스러워질 수 있지만 표시도 늦어집니다."));
         var pace = Choice(recordingPage, new[] { new { Id = "fast", Name = UiText.T("빠르게") }, new { Id = "balanced", Name = UiText.T("균형 (권장)") }, new { Id = "context", Name = UiText.T("문맥 우선") } }, "Name", "Id", current.CaptionPace);
-        var streaming = new CheckBox { Content = UiText.T("말하는 중 원문 미리보기"), IsChecked = current.StreamingPreview };
+        var streaming = new CheckBox { Content = UiText.T("자막 미리보기"), IsChecked = current.StreamingPreview };
         recordingPage.Children.Add(streaming);
         Label(recordingPage, UiText.T("미리보기"), UiText.T("약 2초부터 원문을 주기적으로 갱신합니다. 확정 전 문장은 바뀔 수 있습니다. PC가 느리면 이 기능을 끌 수 있습니다."));
+        var previewHelp=new StackPanel();recordingPage.Children.Add(previewHelp);
+        Label(previewHelp,"OpenAI API",UiText.T("API 번역은 불완전한 문장마다 최대 1회 추가 요청으로 임시 번역을 표시합니다. 끄면 확정 번역만 요청합니다."));
+        void ShowPreviewHelp()=>previewHelp.Visibility=translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed;
+        translationProvider.SelectionChanged+=(_,_)=>ShowPreviewHelp();ShowPreviewHelp();
         Label(recordingPage, UiText.T("저장 폴더"));
         var folderRow = new DockPanel { Height = 36, Margin = new Thickness(0, 5, 0, 16) };
         var openFolder = IconButton("folder-open", UiText.T("지정한 저장 폴더를 탐색기로 열기")); openFolder.Margin = new Thickness(6, 0, 0, 0); DockPanel.SetDock(openFolder, Dock.Right); folderRow.Children.Add(openFolder);
@@ -231,7 +293,10 @@ public sealed class SettingsWindow : Window
         Label(summaryPage,"요약 Provider","API 요약은 연결 탭의 공통 API Key를 사용합니다. 후속 작업은 선택한 Agent가 실행합니다.");
         summaryProvider=Choice(summaryPage,new[]{new{Id="agent",Name=UiText.T("선택한 Agent")},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.SummaryProvider);
         summaryProvider.Name="SummaryProvider";
-        summaryProvider.SelectionChanged+=(_,_)=>EngineChanged();EngineChanged();
+        var summaryKey=KeyRow(summaryPage,summaryProvider,"SummaryApiKey");ApiSelection(summaryProvider,summaryKey);
+        var summaryAgent=new Button{Content=UiText.T("Agent 설정"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,8)};summaryPage.Children.Add(summaryAgent);
+        void ShowSummaryAgent()=>summaryAgent.Visibility=summaryProvider.SelectedValue as string=="agent"&&translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed;
+        summaryProvider.SelectionChanged+=(_,_)=>ShowSummaryAgent();translationProvider.SelectionChanged+=(_,_)=>ShowSummaryAgent();ShowSummaryAgent();summaryAgent.Click+=(_,_)=>OpenAgentConfiguration();
         ToggleButton Switch(Panel panel, string text, bool initial)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 9) };
@@ -325,7 +390,7 @@ public sealed class SettingsWindow : Window
                 Value.SummaryProvider=summaryProvider.SelectedValue as string??"agent";
                 ReadAgentOptions(Value);
                 Value.PostStopPrompt=postStop.Text;Value.Shortcuts=shortcutInputs.ToDictionary(p=>p.Key,p=>p.Value.Tag as string??"");
-                Value.SpeechEngine=engine.SelectedValue as string??"whisper"; if(keyLoaded||apiKey.Password.Length>0)Value.SetKey(apiKey.Password);
+                Value.SpeechEngine=engine.SelectedValue as string??"whisper"; if(keyLoaded)Value.SetKey(apiKey);
                 Value.DeviceId = (string?)device.SelectedValue; Value.RecordAudio = recording.IsChecked == true;
                 Value.CaptionPace = pace.SelectedValue as string ?? "balanced";
                 Value.StreamingPreview = streaming.IsChecked == true;
@@ -359,15 +424,15 @@ public sealed class SettingsWindow : Window
         Loaded+=(_,_)=>{if(IsVisible){interactive=true;CheckShortcuts();}};
         saveBeforeUpdate=()=>Persist(false);
         var autosave=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromMilliseconds(700)};
-        void Schedule(){if(!interactive)return;autosave.Stop();autosave.Start();}
+        void Schedule(){if(!interactive||apiDialogOpen)return;autosave.Stop();autosave.Start();}
+        apiKeySaved=()=>{autosave.Stop();if(!interactive||!Persist(false))return false;saveGate.Saved();return true;};
         bool TextFocused()=>Keyboard.FocusedElement is TextBox or PasswordBox;
         void TextChanged(bool focused){if(!interactive)return;if(saveGate.TextChanged(focused))Schedule();else autosave.Stop();}
-        autosave.Tick+=(_,_)=>{if(!SettingsSaveGate.CanRunTimer(TextFocused(),HasOpenDropdown((DependencyObject)Content)))return;autosave.Stop();if(Persist(false))saveGate.Saved();};
+        autosave.Tick+=(_,_)=>{if(apiDialogOpen||!SettingsSaveGate.CanRunTimer(TextFocused(),HasOpenDropdown((DependencyObject)Content)))return;autosave.Stop();if(Persist(false))saveGate.Saved();};
         AddHandler(TextBox.TextChangedEvent,new TextChangedEventHandler((_,e)=>{if(IsSettingInput(e.OriginalSource)&&e.OriginalSource is TextBox input)TextChanged(input.IsKeyboardFocusWithin);}));
         AddHandler(System.Windows.Controls.Primitives.Selector.SelectionChangedEvent,new SelectionChangedEventHandler((_,e)=>{if(IsSettingInput(e.OriginalSource))Schedule();}));
         AddHandler(ToggleButton.CheckedEvent,new RoutedEventHandler((_,e)=>{if(IsSettingInput(e.OriginalSource))Schedule();}));
         AddHandler(ToggleButton.UncheckedEvent,new RoutedEventHandler((_,e)=>{if(IsSettingInput(e.OriginalSource))Schedule();}));
-        apiKey.PasswordChanged+=(_,_)=>TextChanged(apiKey.IsKeyboardFocusWithin);
         AddHandler(Keyboard.LostKeyboardFocusEvent,new KeyboardFocusChangedEventHandler((_,e)=>
         {
             if(!interactive||!saveGate.HasTextEdits||e.OriginalSource is not (TextBox or PasswordBox))return;
@@ -379,7 +444,7 @@ public sealed class SettingsWindow : Window
                 if(Persist(false))saveGate.Saved();
             }));
         }));
-        Closing+=(_,e)=>{autosave.Stop();if(interactive&&!Persist(false))e.Cancel=true;};
+        Closing+=(_,e)=>{if(apiDialogOpen){e.Cancel=true;return;}autosave.Stop();if(interactive&&!Persist(false))e.Cancel=true;};
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape&&!shortcutInputs.Values.Any(i=>i.IsKeyboardFocusWithin)) { e.Handled = true; Close(); } };
         Closed += (_, _) => { interactive=false;autosave.Stop();updateLife.Cancel();audioTest?.Cancel(); agentCheck?.Cancel(); ThemeManager.Apply(Value.Theme); };
     }

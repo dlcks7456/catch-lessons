@@ -21,7 +21,7 @@ internal static class CaptionAssembler
     };
 
     internal static async IAsyncEnumerable<Caption> ReadAsync(ChannelReader<Caption> reader,
-        [EnumeratorCancellation] CancellationToken token)
+        [EnumeratorCancellation] CancellationToken token, double maxWaitSeconds = 2)
     {
         while (await reader.WaitToReadAsync(token))
         {
@@ -32,7 +32,7 @@ internal static class CaptionAssembler
             {
                 if (!reader.TryPeek(out var next))
                 {
-                    var remaining = TimeSpan.FromSeconds(2) - clock.Elapsed;
+                    var remaining = TimeSpan.FromSeconds(maxWaitSeconds) - clock.Elapsed;
                     if (remaining <= TimeSpan.Zero) break;
                     using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
                     wait.CancelAfter(remaining);

@@ -86,6 +86,7 @@ public static class Diagnostics
         if (mode == "--summary-test") return await SummaryTests.RunAsync();
         if (mode == "--feature-test") return await FeatureTests.RunAsync();
         if (mode == "--api-translation-test") return await OpenAiTranslationTests.RunAsync();
+        if (mode == "--api-caption-flow-test") return await ApiCaptionFlowTests.RunAsync();
         if (mode == "--api-segmentation-smoke") return await LocalTests.SmokeAsync(apiTranslation:true);
         if (mode == "--api-summary-live-test")
         {

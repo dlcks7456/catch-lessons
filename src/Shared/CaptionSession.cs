@@ -3,6 +3,8 @@ using NAudio.Wave;
 
 namespace CatchLessons;
 
+public sealed record ApiTranslationPreview(long Revision, double End, string Text);
+
 public sealed class CaptionSession
 {
     private readonly Settings settings;
@@ -18,6 +20,14 @@ public sealed class CaptionSession
     private SessionStore? store;
     private CodexTranslator? translator;
     private OpenAiTranslator? apiTranslator;
+    private OpenAiTranslator? apiPreviewTranslator;
+    private readonly SemaphoreSlim apiRequestGate=new(1,1);
+    private readonly object apiPreviewGate=new();
+    private CancellationTokenSource? apiPreviewCancellation;
+    private Task? apiPreviewTask;
+    private int apiPreviewGroupId, pendingApiFinalTranslations;
+    private double apiPreviewEnd;
+    private long apiPreviewRevision;
     public CodexTranslator? Agent => translator;
     public event Action<string>? SessionStarted;
     private readonly Dictionary<int, Caption> pending = new();
@@ -41,6 +51,7 @@ public sealed class CaptionSession
     public string? Folder => store?.Folder;
     public event Action<string>? Status;
     public event Action<TranscriptPreview>? Partial;
+    public event Action<ApiTranslationPreview>? TranslationPreview;
     public event Action<Caption>? Updated;
     public event Action<float>? Level;
     public event Action<Exception>? Failed;
@@ -52,9 +63,73 @@ public sealed class CaptionSession
         this.settings = System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
         transcriber = settings.SpeechEngine == "openai" ? new CloudTranscriber() : new LocalTranscriber();
     }
+    private void StartApiPreview(Caption caption)
+    {
+        long revision;CancellationTokenSource request;
+        lock(apiPreviewGate)
+        {
+            if(apiPreviewGroupId!=0||pendingApiFinalTranslations!=0||apiTranslator==null||apiPreviewTranslator==null)return;
+            apiPreviewGroupId=caption.Id;apiPreviewEnd=caption.End;revision=++apiPreviewRevision;
+            request=CancellationTokenSource.CreateLinkedTokenSource(workStop.Token);apiPreviewCancellation=request;
+            TranslationPreview?.Invoke(new(revision,caption.End,""));
+            apiPreviewTask=Task.Run(async()=>
+            {
+                var acquired=false;
+                try
+                {
+                    await apiRequestGate.WaitAsync(request.Token);acquired=true;
+                    if(IsCurrentApiPreview(caption.Id,revision,request))
+                    {
+                        apiPreviewTranslator!.ResetPreviewContext(apiTranslator!);
+                        await apiPreviewTranslator.TranslateAsync(caption,text=>
+                            {if(IsCurrentApiPreview(caption.Id,revision,request))TranslationPreview?.Invoke(new(revision,caption.End,text));},request.Token);
+                    }
+                }
+                catch(OperationCanceledException)when(request.IsCancellationRequested||workStop.IsCancellationRequested){}
+                catch(Exception){}
+                finally{if(acquired)apiRequestGate.Release();}
+            });
+        }
+    }
+    private bool IsCurrentApiPreview(int captionId,long revision,CancellationTokenSource request)
+    {
+        lock(apiPreviewGate)return apiPreviewGroupId==captionId&&apiPreviewRevision==revision&&ReferenceEquals(apiPreviewCancellation,request)&&!request.IsCancellationRequested;
+    }
+    private async Task BeginApiFinalTranslationAsync(Caption caption)
+    {
+        CancellationTokenSource? request;Task? preview;long revision;double end;
+        lock(apiPreviewGate)
+        {
+            pendingApiFinalTranslations++;revision=++apiPreviewRevision;end=apiPreviewEnd;
+            request=apiPreviewCancellation;apiPreviewCancellation=null;apiPreviewGroupId=0;
+            preview=apiPreviewTask;apiPreviewTask=null;
+        }
+        request?.Cancel();
+        if(request!=null)TranslationPreview?.Invoke(new(revision,Math.Max(caption.End,end),""));
+        if(preview!=null)await preview;
+        request?.Dispose();
+    }
+    private async Task StopApiPreviewAsync()
+    {
+        CancellationTokenSource? request;Task? preview;long revision;double end;
+        lock(apiPreviewGate)
+        {
+            request=apiPreviewCancellation;apiPreviewCancellation=null;preview=apiPreviewTask;apiPreviewTask=null;
+            apiPreviewGroupId=0;revision=++apiPreviewRevision;end=apiPreviewEnd;
+        }
+        request?.Cancel();
+        if(request!=null)TranslationPreview?.Invoke(new(revision,end,""));
+        if(preview!=null)await preview;
+        request?.Dispose();
+    }
+    private void CompleteApiFinalTranslation(){lock(apiPreviewGate)pendingApiFinalTranslations--;}
     public async Task StartAsync(CancellationToken token = default)
     {
-        if (settings.ApiTranslation) apiTranslator = new OpenAiTranslator(settings);
+        if (settings.ApiTranslation)
+        {
+            apiTranslator = new OpenAiTranslator(settings);
+            apiPreviewTranslator = apiTranslator.CreatePreviewTranslator();
+        }
         else if(settings.RequiresAgentForCapture) translator = CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work"));
         transcriber.LanguagesDetected += codes => LanguagesDetected?.Invoke(codes);
         transcriber.Status += text => Status?.Invoke(text);
@@ -81,7 +156,11 @@ public sealed class CaptionSession
     }
     internal void OnRawTranscript(Caption caption)
     {
-        if(rawTranscripts.Writer.TryWrite(caption))return;
+        if(rawTranscripts.Writer.TryWrite(caption))
+        {
+            if(settings.ApiTranslation&&settings.StreamingPreview&&caption.Original.Length>=20&&CaptionAssembler.NeedsContinuation(caption.Original))StartApiPreview(caption);
+            return;
+        }
         store!.Save(caption with{State="queue_full"});
         Failed?.Invoke(new IOException("전사 대기열이 가득 찼습니다. 원본 인식 결과는 저장했습니다."));
     }
@@ -119,7 +198,7 @@ public sealed class CaptionSession
         catch (OperationCanceledException) when (workStop.IsCancellationRequested) { }
         catch (Exception ex) { Failed?.Invoke(ex); }
     }
-    private void OnTranscript(Caption caption)
+    private async Task OnTranscriptAsync(Caption caption)
     {
         if (settings.TranscriptionOnly)
         {
@@ -131,8 +210,10 @@ public sealed class CaptionSession
         store!.Save(caption);
         lock (gate) pending[caption.Id] = caption;
         Updated?.Invoke(caption);
+        if(settings.ApiTranslation)await BeginApiFinalTranslationAsync(caption);
         if (!translations.Writer.TryWrite(caption))
         {
+            if(settings.ApiTranslation)CompleteApiFinalTranslation();
             store.Save(caption with { State = "queue_full" });
             Failed?.Invoke(new IOException("번역 대기열이 가득 찼습니다. 원문은 저장했습니다."));
         }
@@ -141,8 +222,8 @@ public sealed class CaptionSession
     {
         try
         {
-            await foreach (var caption in settings.ApiTranslation ? rawTranscripts.Reader.ReadAllAsync(workStop.Token) : CaptionAssembler.ReadAsync(rawTranscripts.Reader, workStop.Token))
-                OnTranscript(caption);
+            var captions=settings.ApiTranslation?CaptionAssembler.ReadAsync(rawTranscripts.Reader,workStop.Token,3.35):CaptionAssembler.ReadAsync(rawTranscripts.Reader,workStop.Token);
+            await foreach (var caption in captions)await OnTranscriptAsync(caption);
         }
         catch (OperationCanceledException) when (workStop.IsCancellationRequested) { }
         catch (Exception ex) { Failed?.Invoke(ex); }
@@ -159,13 +240,20 @@ public sealed class CaptionSession
                 while (apiTranslator == null && batch.Count < 6 && translations.Reader.TryRead(out var next)) batch.Add(next);
                 batch.Sort((a, b) => a.Start.CompareTo(b.Start));
                 Dictionary<int, string>? translated = null;
+                bool apiRequestQueued=false;
                 try
                 {
                     if (apiTranslator != null)
                     {
-                        var text = await apiTranslator.TranslateAsync(caption,
-                            text => Updated?.Invoke(caption with { Korean = text, State = "translating" }), workStop.Token);
-                        translated = new() { [caption.Id] = text };
+                        apiRequestQueued=true;
+                        await apiRequestGate.WaitAsync(workStop.Token);
+                        try
+                        {
+                            var text = await apiTranslator.TranslateAsync(caption,
+                                text => Updated?.Invoke(caption with { Korean = text, State = "translating" }), workStop.Token);
+                            translated = new() { [caption.Id] = text };
+                        }
+                        finally{apiRequestGate.Release();}
                     }
                     else translated=await translator!.TranslateBatchAsync(batch,[],workStop.Token);
                 }
@@ -175,6 +263,7 @@ public sealed class CaptionSession
                     Status?.Invoke(ex.Message);
                     try{File.AppendAllText(Path.Combine(store!.InternalFolder,"translation-errors.jsonl"),System.Text.Json.JsonSerializer.Serialize(new{time=DateTimeOffset.Now,ids=batch.Select(c=>c.Id),error=ex.Message})+Environment.NewLine);}catch(IOException){}
                 }
+                finally{if(apiRequestQueued)CompleteApiFinalTranslation();}
                 foreach (var c in batch)
                 {
                     var result = translated == null ? c with { State = "failed" } : c with { Korean = translated[c.Id], State = "done" };
@@ -214,6 +303,7 @@ public sealed class CaptionSession
             rawTranscripts.Writer.TryComplete();
             if (assemblerTask != null) await assemblerTask;
             else translations.Writer.TryComplete();
+            if(settings.ApiTranslation)await StopApiPreviewAsync();
             if (translatorTask != null)
             {
                 Status?.Invoke("남은 번역 저장 중… (최대 15초)");
@@ -224,10 +314,13 @@ public sealed class CaptionSession
         finally
         {
             workStop.Cancel();
+            if(settings.ApiTranslation)await StopApiPreviewAsync();
             if (sender != null) await sender;
             if (assemblerTask != null) await assemblerTask;
             if (translatorTask != null) await translatorTask;
             apiTranslator?.Dispose();
+            apiPreviewTranslator?.Dispose();
+            apiRequestGate.Dispose();
             lock (gate)
                 foreach (var c in pending.Values)
                 {

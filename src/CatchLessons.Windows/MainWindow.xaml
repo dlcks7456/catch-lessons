@@ -86,10 +86,19 @@
        </ItemsControl>
        <StackPanel Margin="4,10,8,8">
         <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers>
-         <DataTrigger Binding="{Binding Text, ElementName=PartialText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+         <MultiDataTrigger><MultiDataTrigger.Conditions>
+          <Condition Binding="{Binding Text, ElementName=PartialText}" Value=""/>
+          <Condition Binding="{Binding Text, ElementName=TranslationPreviewText}" Value=""/>
+         </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Collapsed"/></MultiDataTrigger>
         </Style.Triggers></Style></StackPanel.Style>
-        <TextBlock Text="원문 미리보기 · 인식 중 수정될 수 있습니다" Foreground="{DynamicResource Accent}" FontSize="11" Margin="0,0,0,5"/>
+        <TextBlock Text="원문 미리보기 · 인식 중 수정될 수 있습니다" Foreground="{DynamicResource Accent}" FontSize="11" Margin="0,0,0,5">
+         <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=PartialText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+        </TextBlock>
         <TextBlock x:Name="PartialText" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="16"/>
+        <TextBlock x:Name="TranslationPreviewLabel" Text="번역 미리보기 · 확정 전이라 바뀔 수 있습니다" Foreground="{DynamicResource Accent}" FontSize="11" Margin="0,8,0,5" Visibility="Collapsed"/>
+        <TextBlock x:Name="TranslationPreviewText" TextWrapping="Wrap" Foreground="{DynamicResource Text}" FontSize="16" FlowDirection="LeftToRight">
+         <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=TranslationPreviewText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+        </TextBlock>
        </StackPanel>
       </StackPanel>
      </ScrollViewer>

@@ -80,6 +80,13 @@ internal static class RedesignTests
                 Render((FrameworkElement)settings.Content, 700, settings.Height, $"artifacts/settings-{mode}-{index}.png");
             }
             settings.Close();
+            var apiSettings=new SettingsWindow(new Settings{Theme=mode,TranslationProvider="openai",SpeechEngine="openai"});
+            var apiLayout=(Grid)((Border)apiSettings.Content).Child;
+            apiLayout.Children.OfType<TabControl>().Single().SelectedIndex=1;
+            Render((FrameworkElement)apiSettings.Content,700,apiSettings.Height,$"artifacts/settings-{mode}-api.png");apiSettings.Close();
+            var keyDialog=new ApiKeyWindow(new Settings(),"");
+            var keyContent=(FrameworkElement)keyDialog.Content;keyContent.Measure(new Size(460,double.PositiveInfinity));
+            Render(keyContent,460,Math.Ceiling(keyContent.DesiredSize.Height),$"artifacts/settings-{mode}-key.png");keyDialog.Close();
         }
         return Task.FromResult(JsonSerializer.Serialize(new { passed = checks, cloudRequests = 0, liveUiActions = 0, renderedThemes = 2 }));
     }

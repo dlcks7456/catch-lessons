@@ -45,6 +45,8 @@ public partial class MainWindow : Window
 
     private bool summarySaved, postStopAttempted;
     private double latestPreviewEnd, displayedThrough;
+    private double latestTranslationPreviewEnd;
+    private long latestTranslationPreviewRevision;
     private bool loadingLanguages = true;
     private bool loadingTopic=true;
     public MainWindow()
@@ -206,10 +208,21 @@ public partial class MainWindow : Window
             if (caption.End >= latestPreviewEnd) PartialText.Text = "";
         }
         // Keep captions while the user is reading earlier lines.
+        if(caption.End>=latestTranslationPreviewEnd){latestTranslationPreviewEnd=caption.End;TranslationPreviewText.Text="";TranslationPreviewLabel.Visibility=Visibility.Collapsed;}
         if (historyFollow.Following)
             while (rows.Count > 500) rows.RemoveAt(0);
         historyFollow.ContentChanged();
 
+    }
+    internal void ApplyTranslationPreview(ApiTranslationPreview preview)
+    {
+        if(preview.Revision<latestTranslationPreviewRevision)return;
+        latestTranslationPreviewRevision=preview.Revision;
+        if(!string.IsNullOrEmpty(preview.Text)&&(preview.End<=displayedThrough||preview.End<latestTranslationPreviewEnd))return;
+        latestTranslationPreviewEnd=preview.End;
+        TranslationPreviewText.Text=preview.Text;
+        TranslationPreviewText.FlowDirection=(FlowDirection)Languages.Direction(preview.Text);
+        TranslationPreviewLabel.Visibility=string.IsNullOrEmpty(preview.Text)?Visibility.Collapsed:Visibility.Visible;
     }
     private void SetMainAction(string icon, string label)
     {
@@ -281,6 +294,7 @@ public partial class MainWindow : Window
         });
         current.Level += level => Dispatch(() => { if (session == current) Meter.Value = Math.Min(1, level * 4); });
         current.Partial += preview => Dispatch(() => { if (session == current) ApplyPreview(preview); });
+        current.TranslationPreview += preview => Dispatch(() => { if (session == current) ApplyTranslationPreview(preview); });
         current.Updated += caption => Dispatch(() => { if (session == current) ApplyCaption(caption); });
         current.Failed += ex => Dispatch(async () =>
         {
@@ -514,6 +528,7 @@ public partial class MainWindow : Window
         rows.Clear();
         latestPreviewEnd = displayedThrough = 0;
         PartialText.Text = "";
+        latestTranslationPreviewEnd=0;latestTranslationPreviewRevision=0;TranslationPreviewText.Text="";TranslationPreviewLabel.Visibility=Visibility.Collapsed;
         SessionIdText.Text=""; SessionIdText.Tag=null;OpenAgentSessionButton.CommandParameter=null;OpenAgentSessionButton.Visibility=Visibility.Collapsed;
         Meter.Value = 0;
         RefreshLanguages();

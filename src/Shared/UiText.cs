@@ -5,6 +5,23 @@ public static class UiText
     public static string Language {get;set;}="en";
     private static readonly Dictionary<string,string> English = new(StringComparer.Ordinal)
     {
+        ["지침"]="Instructions",["공통 API Key 관리"]="Manage shared API key",["공통 OpenAI API Key"]="Shared OpenAI API key",
+        ["번역 미리보기 · 확정 전이라 바뀔 수 있습니다"]="Translation preview · may change before finalization",
+        ["자막 미리보기"]="Caption previews",
+        ["API 번역은 불완전한 문장마다 최대 1회 추가 요청으로 임시 번역을 표시합니다. 끄면 확정 번역만 요청합니다."]="API translation can make one additional request per incomplete phrase for a tentative preview. Turn this off to request only final translations.",
+        ["Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함해 번역을 스트리밍합니다. API Key는 오른쪽 키 버튼에서 관리합니다."]="Agent translation keeps its current behavior. OpenAI API streams translations with recent context. Manage the shared key using the button on the right.",
+        ["API Key는 음성 인식·번역·요약에서 공유합니다. 오른쪽 키 버튼에서 관리하세요."]="Speech recognition, translation and summaries share one API key. Use the key buttons to manage it.",
+        ["음성 인식·번역·요약에서 같은 키를 사용합니다. API 사용 요금은 별도입니다."]="Speech recognition, translation and summaries use this key. API usage is billed separately.",
+        ["저장된 API Key를 읽지 못했습니다. 새 키를 입력하고 저장하세요."]="The saved API key could not be read. Enter and save a new key.",
+        ["API Key를 입력하세요."]="Enter an API key.",["OpenAI API 연결 확인 중…"]="Checking OpenAI API connection…",
+        ["Agent 설정"]="Agent settings",
+        ["Agent 번역은 선택한 Agent를 사용합니다. API Key는 오른쪽 열쇠 버튼으로 공통 관리합니다."]="Agent translation uses the selected agent. Use the key button to manage the shared API key.",
+        ["API 요약은 연결 탭과 같은 키를 사용합니다. 후속 작업은 선택한 Agent가 실행합니다."]="API summaries use the same key as Connection settings. Workflows use the selected agent.",
+        ["음성 인식·번역·요약은 같은 보안 저장 API Key를 사용합니다."]="Speech recognition, translation and summaries share one securely stored API key.",
+        ["음성 인식, 번역, 요약에서 함께 사용합니다."]="Shared by speech recognition, translation and summaries.",
+        ["번역 방식·말투·용어 규칙을 설정합니다. 다음 녹음부터 적용합니다."]="Set translation style, tone and terminology. Changes apply to the next recording.",
+        ["요약 완료 후 같은 Agent가 실행합니다. Skill·MCP와 Agent 권한 정책을 따릅니다. 비우면 실행하지 않습니다."]="The same agent runs this after the summary using configured skills and MCP tools under its permission policy. Leave blank to skip.",
+        ["취소"]="Cancel",["저장"]="Save",
         ["요약 Provider"]="Summary provider",
         ["API 요약은 연결 탭의 공통 API Key를 사용합니다. 후속 작업은 선택한 Agent가 실행합니다."]="API summaries use the shared API key in Connection settings. Post-recording workflows use the selected agent.",
         ["번역 Provider"]="Translation provider",["선택한 Agent"]="Selected agent",
