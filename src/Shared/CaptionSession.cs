@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using System.Diagnostics;
 using NAudio.Wave;
 
 namespace CatchLessons;
@@ -25,9 +26,14 @@ public sealed class CaptionSession
     private readonly object apiPreviewGate=new();
     private CancellationTokenSource? apiPreviewCancellation;
     private Task? apiPreviewTask;
-    private int apiPreviewGroupId, pendingApiFinalTranslations;
-    private double apiPreviewEnd;
+    private int pendingApiFinalTranslations;
+    private double apiPreviewEnd, apiPreviewFinalThrough;
     private long apiPreviewRevision;
+    private Caption? queuedApiPreview, lastApiPreview;
+    private long apiPreviewStarted;
+    private bool apiPreviewStopping;
+    private bool apiPreviewHasText;
+    private string apiPreviewText="";
     public CodexTranslator? Agent => translator;
     public event Action<string>? SessionStarted;
     private readonly Dictionary<int, Caption> pending = new();
@@ -63,37 +69,90 @@ public sealed class CaptionSession
         this.settings = System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
         transcriber = settings.SpeechEngine == "openai" ? new CloudTranscriber() : new LocalTranscriber();
     }
-    private void StartApiPreview(Caption caption)
+    internal void OnTranscriptPreview(TranscriptPreview preview)
     {
-        long revision;CancellationTokenSource request;
+        Partial?.Invoke(preview);
+        if(settings.ApiTranslation&&settings.StreamingPreview)
+            QueueApiPreview(new(preview.TurnId>0?preview.TurnId:1,"draft",0,preview.End,preview.Text));
+    }
+    private bool HasNewPreviewText(Caption caption) => lastApiPreview==null||caption.Id!=lastApiPreview.Id||
+        (!string.Equals(caption.Original,lastApiPreview.Original,StringComparison.Ordinal)&&
+         (!caption.Original.StartsWith(lastApiPreview.Original,StringComparison.Ordinal)||caption.Original.Length-lastApiPreview.Original.Length>=12));
+    private void QueueApiPreview(Caption caption)
+    {
         lock(apiPreviewGate)
         {
-            if(apiPreviewGroupId!=0||pendingApiFinalTranslations!=0||apiTranslator==null||apiPreviewTranslator==null)return;
-            apiPreviewGroupId=caption.Id;apiPreviewEnd=caption.End;revision=++apiPreviewRevision;
-            request=CancellationTokenSource.CreateLinkedTokenSource(workStop.Token);apiPreviewCancellation=request;
-            TranslationPreview?.Invoke(new(revision,caption.End,""));
-            apiPreviewTask=Task.Run(async()=>
-            {
-                var acquired=false;
-                try
-                {
-                    await apiRequestGate.WaitAsync(request.Token);acquired=true;
-                    if(IsCurrentApiPreview(caption.Id,revision,request))
-                    {
-                        apiPreviewTranslator!.ResetPreviewContext(apiTranslator!);
-                        await apiPreviewTranslator.TranslateAsync(caption,text=>
-                            {if(IsCurrentApiPreview(caption.Id,revision,request))TranslationPreview?.Invoke(new(revision,caption.End,text));},request.Token);
-                    }
-                }
-                catch(OperationCanceledException)when(request.IsCancellationRequested||workStop.IsCancellationRequested){}
-                catch(Exception){}
-                finally{if(acquired)apiRequestGate.Release();}
-            });
+            if(apiPreviewStopping||workStop.IsCancellationRequested||caption.Original.Length<20||caption.End<=apiPreviewFinalThrough||
+               (lastApiPreview!=null&&caption.Id<lastApiPreview.Id)||
+               (queuedApiPreview!=null&&caption.Id<queuedApiPreview.Id))return;
+            queuedApiPreview=caption;
+            // A cold model must emit some text before same-turn updates can supersede it.
+            if(apiPreviewCancellation!=null&&lastApiPreview!=null&&HasNewPreviewText(caption)&&
+               (caption.Id!=lastApiPreview.Id||(apiPreviewHasText&&Stopwatch.GetElapsedTime(apiPreviewStarted).TotalSeconds>=2)))apiPreviewCancellation.Cancel();
+            StartApiPreviewWorker();
         }
     }
-    private bool IsCurrentApiPreview(int captionId,long revision,CancellationTokenSource request)
+    // Called under apiPreviewGate: one worker and one replaceable snapshot, never a queue of old drafts.
+    private void StartApiPreviewWorker()
     {
-        lock(apiPreviewGate)return apiPreviewGroupId==captionId&&apiPreviewRevision==revision&&ReferenceEquals(apiPreviewCancellation,request)&&!request.IsCancellationRequested;
+        if(apiPreviewStopping||workStop.IsCancellationRequested||pendingApiFinalTranslations!=0||apiPreviewTask!=null||queuedApiPreview==null||
+           apiTranslator==null||apiPreviewTranslator==null||!HasNewPreviewText(queuedApiPreview))return;
+        var request=CancellationTokenSource.CreateLinkedTokenSource(workStop.Token);apiPreviewCancellation=request;
+        apiPreviewTask=Task.Run(async()=>
+        {
+            try
+            {
+                while(true)
+                {
+                    double delay;
+                    lock(apiPreviewGate)delay=apiPreviewStarted==0?0:2-Stopwatch.GetElapsedTime(apiPreviewStarted).TotalSeconds;
+                    if(delay>0)await Task.Delay(TimeSpan.FromSeconds(delay),request.Token);
+                    await apiRequestGate.WaitAsync(request.Token);
+                    try
+                    {
+                        Caption caption;long revision;
+                        lock(apiPreviewGate)
+                        {
+                            if(request.IsCancellationRequested||pendingApiFinalTranslations!=0||queuedApiPreview==null||
+                               queuedApiPreview.End<=apiPreviewFinalThrough||!HasNewPreviewText(queuedApiPreview))return;
+                            caption=queuedApiPreview;queuedApiPreview=null;
+                            if(lastApiPreview?.Id!=caption.Id)apiPreviewText="";
+                            lastApiPreview=caption;
+                            apiPreviewHasText=false;
+                            apiPreviewEnd=caption.End;apiPreviewStarted=Stopwatch.GetTimestamp();revision=++apiPreviewRevision;
+                            TranslationPreview?.Invoke(new(revision,caption.End,apiPreviewText));
+                        }
+                        apiPreviewTranslator!.ResetPreviewContext(apiTranslator!);
+                        await apiPreviewTranslator.TranslateAsync(caption,text=>
+                            PublishApiPreview(revision,request,caption.End,text),request.Token);
+                    }
+                    finally{apiRequestGate.Release();}
+                    lock(apiPreviewGate)if(queuedApiPreview==null||!HasNewPreviewText(queuedApiPreview))return;
+                }
+            }
+            catch(OperationCanceledException)when(request.IsCancellationRequested||workStop.IsCancellationRequested){}
+            catch(Exception){}
+            finally
+            {
+                lock(apiPreviewGate)
+                {
+                    if(ReferenceEquals(apiPreviewCancellation,request))
+                    {
+                        apiPreviewCancellation=null;apiPreviewTask=null;
+                        StartApiPreviewWorker();
+                    }
+                }
+                request.Dispose();
+            }
+        });
+    }
+    private void PublishApiPreview(long revision,CancellationTokenSource request,double end,string text)
+    {
+        lock(apiPreviewGate)
+        {
+            if(apiPreviewRevision!=revision||!ReferenceEquals(apiPreviewCancellation,request)||request.IsCancellationRequested||end<=apiPreviewFinalThrough)return;
+            apiPreviewText=text;apiPreviewHasText=!string.IsNullOrWhiteSpace(text);TranslationPreview?.Invoke(new(revision,end,text));
+        }
     }
     private async Task BeginApiFinalTranslationAsync(Caption caption)
     {
@@ -101,28 +160,33 @@ public sealed class CaptionSession
         lock(apiPreviewGate)
         {
             pendingApiFinalTranslations++;revision=++apiPreviewRevision;end=apiPreviewEnd;
-            request=apiPreviewCancellation;apiPreviewCancellation=null;apiPreviewGroupId=0;
+            apiPreviewFinalThrough=Math.Max(apiPreviewFinalThrough,caption.End);
+            apiPreviewText="";
+            if(queuedApiPreview?.End<=apiPreviewFinalThrough)queuedApiPreview=null;
+            if(lastApiPreview!=null&&lastApiPreview.End>apiPreviewFinalThrough)
+            {
+                if(queuedApiPreview==null||lastApiPreview.End>queuedApiPreview.End)queuedApiPreview=lastApiPreview;
+                lastApiPreview=null;
+            }
+            request=apiPreviewCancellation;request?.Cancel();apiPreviewCancellation=null;
             preview=apiPreviewTask;apiPreviewTask=null;
         }
-        request?.Cancel();
-        if(request!=null)TranslationPreview?.Invoke(new(revision,Math.Max(caption.End,end),""));
+        TranslationPreview?.Invoke(new(revision,Math.Max(caption.End,end),""));
         if(preview!=null)await preview;
-        request?.Dispose();
     }
     private async Task StopApiPreviewAsync()
     {
         CancellationTokenSource? request;Task? preview;long revision;double end;
         lock(apiPreviewGate)
         {
-            request=apiPreviewCancellation;apiPreviewCancellation=null;preview=apiPreviewTask;apiPreviewTask=null;
-            apiPreviewGroupId=0;revision=++apiPreviewRevision;end=apiPreviewEnd;
+            apiPreviewStopping=true;queuedApiPreview=null;apiPreviewText="";
+            request=apiPreviewCancellation;request?.Cancel();apiPreviewCancellation=null;preview=apiPreviewTask;apiPreviewTask=null;
+            revision=++apiPreviewRevision;end=apiPreviewEnd;
         }
-        request?.Cancel();
-        if(request!=null)TranslationPreview?.Invoke(new(revision,end,""));
+        TranslationPreview?.Invoke(new(revision,end,""));
         if(preview!=null)await preview;
-        request?.Dispose();
     }
-    private void CompleteApiFinalTranslation(){lock(apiPreviewGate)pendingApiFinalTranslations--;}
+    private void CompleteApiFinalTranslation(){lock(apiPreviewGate){pendingApiFinalTranslations--;StartApiPreviewWorker();}}
     public async Task StartAsync(CancellationToken token = default)
     {
         if (settings.ApiTranslation)
@@ -133,7 +197,7 @@ public sealed class CaptionSession
         else if(settings.RequiresAgentForCapture) translator = CodexTranslator.Create(settings, Path.Combine(Settings.Root, "agent-work"));
         transcriber.LanguagesDetected += codes => LanguagesDetected?.Invoke(codes);
         transcriber.Status += text => Status?.Invoke(text);
-        transcriber.Partial += text => Partial?.Invoke(text);
+        transcriber.Partial += OnTranscriptPreview;
         transcriber.Completed += OnRawTranscript;
         transcriber.Failed += ex => Failed?.Invoke(ex);
         Status?.Invoke("음성 인식 준비 중…");
@@ -158,7 +222,7 @@ public sealed class CaptionSession
     {
         if(rawTranscripts.Writer.TryWrite(caption))
         {
-            if(settings.ApiTranslation&&settings.StreamingPreview&&caption.Original.Length>=20&&CaptionAssembler.NeedsContinuation(caption.Original))StartApiPreview(caption);
+            if(settings.ApiTranslation&&settings.StreamingPreview&&CaptionAssembler.NeedsContinuation(caption.Original))QueueApiPreview(caption);
             return;
         }
         store!.Save(caption with{State="queue_full"});

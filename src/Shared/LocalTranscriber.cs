@@ -3,7 +3,7 @@ using Whisper.net;
 
 namespace CatchLessons;
 
-public sealed record TranscriptPreview(string Text, double End);
+public sealed record TranscriptPreview(string Text, double End, int TurnId = 0);
 
 public sealed class LocalTranscriber : ITranscriber
 {
@@ -158,10 +158,10 @@ public sealed class LocalTranscriber : ITranscriber
                         var text = string.Join(" ", texts);
                         if (clip.Preview)
                         {
-                            if (Volatile.Read(ref nextId) < clip.Id) Partial?.Invoke(new(text, clip.End));
+                            if (Volatile.Read(ref nextId) < clip.Id) Partial?.Invoke(new(text, clip.End, clip.Id));
                             continue;
                         }
-                        Partial?.Invoke(new(text, clip.End));
+                        Partial?.Invoke(new(text, clip.End, clip.Id));
                         if (settings.SourceLanguage == "auto") LanguagesDetected?.Invoke(speech.Sum(s => (s.End - s.Start).TotalSeconds) >= 1 ? languages.ToArray() : []);
                         Completed?.Invoke(new(clip.Id, $"local-{clip.Id}", clip.Start, clip.End, text));
                     }

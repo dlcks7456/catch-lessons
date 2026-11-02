@@ -264,7 +264,7 @@ public sealed class SettingsWindow : Window
         recordingPage.Children.Add(streaming);
         Label(recordingPage, UiText.T("미리보기"), UiText.T("로컬 Whisper는 약 2초부터 원문을 갱신합니다. OpenAI API는 수신한 실시간 원문을 바로 표시합니다. 확정 전 문장은 바뀔 수 있습니다."));
         var previewHelp=new StackPanel();recordingPage.Children.Add(previewHelp);
-        Label(previewHelp,"OpenAI API",UiText.T("API 번역은 불완전한 문장마다 최대 1회 추가 요청으로 임시 번역을 표시합니다. 끄면 확정 번역만 요청합니다."));
+        Label(previewHelp,"OpenAI API",UiText.T("API 번역은 발화 중 원문이 충분히 바뀌면 최소 2초 간격으로 임시 번역을 요청합니다. 추가 API 요금이 발생하며, 끄면 확정 번역만 요청합니다."));
         void ShowPreviewHelp()=>previewHelp.Visibility=translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed;
         translationProvider.SelectionChanged+=(_,_)=>ShowPreviewHelp();ShowPreviewHelp();
         Label(recordingPage, UiText.T("저장 폴더"));

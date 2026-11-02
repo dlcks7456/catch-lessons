@@ -88,6 +88,8 @@ public static class Diagnostics
         if (mode == "--api-translation-test") return await OpenAiTranslationTests.RunAsync();
         if (mode == "--api-caption-flow-test") return await ApiCaptionFlowTests.RunAsync();
         if (mode == "--cloud-transcriber-test") return await CloudTranscriberTests.RunAsync();
+        if (mode == "--live-translation-test") return await LiveTranslationTests.RunAsync();
+        if (mode == "--live-translation-api-test") return await LiveTranslationTests.LiveSmokeAsync();
         if (mode == "--cloud-transcriber-live-test") return await CloudTranscriberTests.LiveSmokeAsync();
         if (mode == "--api-segmentation-smoke") return await LocalTests.SmokeAsync(apiTranslation:true);
         if (mode == "--api-summary-live-test")

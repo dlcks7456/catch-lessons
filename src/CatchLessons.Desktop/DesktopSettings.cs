@@ -83,7 +83,7 @@ internal sealed class DesktopSettings:Window
         Ui.Label(storage,UiText.T("저장 폴더"));var folder=Ui.Input(current.OutputFolder);storage.Children.Add(folder);
         storage.Children.Add(Ui.Button(UiText.T("지정한 폴더 열기"),()=>{try{Directory.CreateDirectory(folder.Text!);Process.Start(new ProcessStartInfo(folder.Text!){UseShellExecute=true});}catch(Exception ex){status.Text=UiText.Status(ex.Message);}}));
         var wav=new CheckBox{Content=UiText.T("원음 WAV 저장"),IsChecked=current.RecordAudio};var streaming=new CheckBox{Content=UiText.T("자막 미리보기"),IsChecked=current.StreamingPreview};storage.Children.Add(wav);storage.Children.Add(streaming);
-        var previewHelp=new TextBlock{Text=UiText.T("API 번역은 불완전한 문장마다 최대 1회 추가 요청으로 임시 번역을 표시합니다. 끄면 확정 번역만 요청합니다."),TextWrapping=TextWrapping.Wrap};storage.Children.Add(previewHelp);
+        var previewHelp=new TextBlock{Text=UiText.T("API 번역은 발화 중 원문이 충분히 바뀌면 최소 2초 간격으로 임시 번역을 요청합니다. 추가 API 요금이 발생하며, 끄면 확정 번역만 요청합니다."),TextWrapping=TextWrapping.Wrap};storage.Children.Add(previewHelp);
         void ShowPreviewHelp()=>previewHelp.IsVisible=translationProvider.SelectedItem as string=="OpenAI API";
         translationProvider.SelectionChanged+=(_,_)=>ShowPreviewHelp();ShowPreviewHelp();
         Ui.Label(storage,UiText.T("문맥 대기"));var pace=Ui.Choice(new[]{"fast","balanced","context"},current.CaptionPace);storage.Children.Add(pace);

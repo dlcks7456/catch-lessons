@@ -10,7 +10,7 @@ public static class UiText
         ["지침"]="Instructions",["공통 API Key 관리"]="Manage shared API key",["공통 OpenAI API Key"]="Shared OpenAI API key",
         ["번역 미리보기 · 확정 전이라 바뀔 수 있습니다"]="Translation preview · may change before finalization",
         ["자막 미리보기"]="Caption previews",
-        ["API 번역은 불완전한 문장마다 최대 1회 추가 요청으로 임시 번역을 표시합니다. 끄면 확정 번역만 요청합니다."]="API translation can make one additional request per incomplete phrase for a tentative preview. Turn this off to request only final translations.",
+        ["API 번역은 발화 중 원문이 충분히 바뀌면 최소 2초 간격으로 임시 번역을 요청합니다. 추가 API 요금이 발생하며, 끄면 확정 번역만 요청합니다."]="API translation refreshes tentative text at least two seconds apart when enough source text changes. Extra API usage is billed. Turn this off to request only final translations.",
         ["Agent 번역은 현재 동작을 유지합니다. OpenAI API는 최근 맥락을 포함해 번역을 스트리밍합니다. API Key는 오른쪽 키 버튼에서 관리합니다."]="Agent translation keeps its current behavior. OpenAI API streams translations with recent context. Manage the shared key using the button on the right.",
         ["API Key는 음성 인식·번역·요약에서 공유합니다. 오른쪽 키 버튼에서 관리하세요."]="Speech recognition, translation and summaries share one API key. Use the key buttons to manage it.",
         ["음성 인식·번역·요약에서 같은 키를 사용합니다. API 사용 요금은 별도입니다."]="Speech recognition, translation and summaries use this key. API usage is billed separately.",

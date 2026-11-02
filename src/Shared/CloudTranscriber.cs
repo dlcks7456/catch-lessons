@@ -108,13 +108,17 @@ public sealed class CloudTranscriber : ITranscriber
                 else if(type=="conversation.item.input_audio_transcription.delta")
                 {
                     var id=e.GetProperty("item_id").GetString()!; drafts.TryGetValue(id,out var text); drafts[id]=text+e.GetProperty("delta").GetString();
-                    if(settings.StreamingPreview)Partial?.Invoke(new(drafts[id],items.TryGetValue(id,out var span)?span.End:commits.TryPeek(out var queued)?queued.End:Volatile.Read(ref end)));
+                    if(settings.StreamingPreview)
+                    {
+                        var known=items.TryGetValue(id,out var span)||commits.TryPeek(out span);
+                        Partial?.Invoke(new(drafts[id],known?span.End:Volatile.Read(ref end),known?span.Id:Volatile.Read(ref nextId)+1));
+                    }
                 }
                 else if(type=="conversation.item.input_audio_transcription.completed")
                 {
                     var id=e.GetProperty("item_id").GetString()!; if(!items.Remove(id,out var span))throw new IOException("전사 결과 불일치"); drafts.Remove(id);
                     var text=e.GetProperty("transcript").GetString()??"";
-                    if(settings.StreamingPreview&&!string.IsNullOrWhiteSpace(text))Partial?.Invoke(new(text,span.End));
+                    if(settings.StreamingPreview&&!string.IsNullOrWhiteSpace(text))Partial?.Invoke(new(text,span.End,span.Id));
                     completed[span.Id]=new(span.Id,id,span.Start,span.End,text);
                     while(completed.Remove(nextComplete,out var caption)) { nextComplete++; if(!string.IsNullOrWhiteSpace(caption.Original))Completed?.Invoke(caption); }
                     if(e.TryGetProperty("languages",out var languages))LanguagesDetected?.Invoke(languages.EnumerateArray().Select(l=>l.GetProperty("code").GetString()!).ToArray());
