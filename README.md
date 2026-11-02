@@ -32,13 +32,13 @@ After stopping, the captions remain visible and can be summarized again until a 
 
 ## 📦 Download and install
 
-The source version is **1.2.0**. The links below remain the published **1.0.2** installers; API translation and summaries require a build from the updated source until a new release is published.
+The current release is **1.2.0**. Existing installations can use **Settings → Check for updates → Update**. Installer checksums are available in the [release assets](https://github.com/dlcks7456/catch-lessons/releases/tag/v1.2.0).
 
 | Platform | Installer | Status |
 | --- | --- | --- |
-| Windows x64 | [Download .exe](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-Windows-x64-1.0.2.exe) | Installation wizard; uninstall via Windows Settings |
-| macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-arm64-1.0.2.pkg) | Experimental; real-device installation untested |
-| macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.0.2/CatchLessons-macOS-x64-1.0.2.pkg) | Experimental; real-device installation untested |
+| Windows x64 | [Download .exe](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-Windows-x64-1.2.0.exe) | Installation wizard; uninstall via Windows Settings |
+| macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-macOS-arm64-1.2.0.pkg) | Experimental; real-device installation untested |
+| macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-macOS-x64-1.2.0.pkg) | Experimental; real-device installation untested |
 
 Open the downloaded installer and follow its instructions. Agent features require Codex CLI or Claude Code to be installed and signed in separately. On Windows, uninstall via **Settings → Apps → Installed apps → CatchLessons**; recordings and settings are retained.
 
