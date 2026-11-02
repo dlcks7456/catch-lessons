@@ -244,7 +244,7 @@ public partial class MainWindow : Window
         settings.TargetLanguage = Languages.Target(settings.TargetLanguage).Code;
         SourcePicker.SelectedValue = Languages.Source(settings.SourceLanguage).Code;
         TargetPicker.SelectedValue = Languages.Target(settings.TargetLanguage).Code;
-        DetectionText.Text = settings.SourceLanguage == "auto" ? UiText.T("자동 감지 대기") : UiText.T("원문 언어 고정");
+        DetectionText.Text = settings.SourceLanguage == "auto" ? UiText.T(settings.SpeechEngine=="openai"?"실시간 자동 인식":"자동 감지 대기") : UiText.T("원문 언어 고정");
         loadingLanguages = false;
     }
     private void LanguageSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

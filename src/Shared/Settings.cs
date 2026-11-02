@@ -72,13 +72,7 @@ public sealed class Settings
     public bool TranscriptionOnly { get; set; }
     public string SummaryLanguage { get; set; } = "ko";
     public string SummaryFormat { get; set; } = "md";
-    public (double Silence, double Maximum) Segmentation => ApiTranslation && SpeechEngine=="openai" ? CaptionPace switch
-    {
-        // Short commits are for streaming ASR; Whisper retains its established audio context.
-        "fast" => (.4, 2),
-        "context" => (.9, 6),
-        _ => (.6, 3)
-    } : CaptionPace switch
+    public (double Silence, double Maximum) Segmentation => CaptionPace switch
     {
         "fast" => (.8, 8),
         "context" => (1.6, 20),

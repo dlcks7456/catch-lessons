@@ -145,7 +145,7 @@ public sealed class CaptionSession
             await translator.StartSessionAsync(store.InternalFolder, token);
             SessionStarted?.Invoke(translator.SessionId!);
         }
-        File.WriteAllText(Path.Combine(store.InternalFolder, "session.json"), System.Text.Json.JsonSerializer.Serialize(new { sourceLanguage = settings.SourceLanguage, targetLanguage = settings.TargetLanguage, mode = settings.TranscriptionOnly ? "transcription" : "translation", translationProvider = settings.TranslationProvider, translationModel = settings.ApiTranslation ? OpenAiTranslator.Model : settings.AgentModel, engine = settings.SpeechEngine, model = settings.SpeechEngine == "openai" ? (settings.SourceLanguage == "auto" ? "gpt-transcribe" : "gpt-live-transcribe") : LocalModels.Resolve(settings.LocalModel).File, runtime = transcriber.RuntimeInfo }));
+        File.WriteAllText(Path.Combine(store.InternalFolder, "session.json"), System.Text.Json.JsonSerializer.Serialize(new { sourceLanguage = settings.SourceLanguage, targetLanguage = settings.TargetLanguage, mode = settings.TranscriptionOnly ? "transcription" : "translation", translationProvider = settings.TranslationProvider, translationModel = settings.ApiTranslation ? OpenAiTranslator.Model : settings.AgentModel, engine = settings.SpeechEngine, model = settings.SpeechEngine == "openai" ? CloudTranscriber.Model : LocalModels.Resolve(settings.LocalModel).File, runtime = transcriber.RuntimeInfo }));
         if (settings.RecordAudio) recording = new WaveFileWriter(Path.Combine(store.Folder, "audio.wav"), AudioCapture.Format);
         await capture.StartAsync(settings.DeviceId,token);
         if (!settings.TranscriptionOnly) translatorTask = Task.Run(TranslateLoopAsync);

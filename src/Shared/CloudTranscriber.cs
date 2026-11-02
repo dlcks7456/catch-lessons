@@ -8,7 +8,8 @@ namespace CatchLessons;
 
 public sealed class CloudTranscriber : ITranscriber
 {
-    private readonly ClientWebSocket socket = new();
+    public const string Model = "gpt-live-transcribe";
+    private readonly WebSocket socket;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ConcurrentQueue<(int Id,double Start,double End)> commits = new();
@@ -24,7 +25,10 @@ public sealed class CloudTranscriber : ITranscriber
     private bool active;
     private int nextId, nextComplete = 1, pending;
     private double start,end,lastVoice;
-    public string RuntimeInfo => "OpenAI Realtime transcription";
+    public CloudTranscriber() : this(new ClientWebSocket()) { }
+    internal CloudTranscriber(WebSocket socket) => this.socket=socket;
+    public string RuntimeInfo => "OpenAI live transcription · " + Model;
+    internal int CommittedTurns => Volatile.Read(ref nextId);
     public event Action<Caption>? Completed;
     public event Action<TranscriptPreview>? Partial;
     public event Action<string[]>? LanguagesDetected;
@@ -36,19 +40,24 @@ public sealed class CloudTranscriber : ITranscriber
         var key = settings.GetKey();
         if (string.IsNullOrWhiteSpace(key)) throw new IOException("설정에서 OpenAI API 키를 입력하세요.");
         resampler = new WdlResamplingSampleProvider(buffer.ToSampleProvider(),24000);
-        socket.Options.SetRequestHeader("Authorization","Bearer " + key);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token); timeout.CancelAfter(TimeSpan.FromSeconds(25));
         Status?.Invoke("OpenAI 음성 인식 연결 중…");
-        await socket.ConnectAsync(new Uri("wss://api.openai.com/v1/realtime?intent=transcription"),timeout.Token);
+        if(socket is ClientWebSocket client)
+        {
+            client.Options.SetRequestHeader("Authorization","Bearer " + key);
+            await client.ConnectAsync(new Uri("wss://api.openai.com/v1/realtime?intent=transcription"),timeout.Token);
+        }
+        if(socket.State!=WebSocketState.Open)throw new IOException("OpenAI transcription socket is not connected.");
         receiver=Task.Run(ReceiveAsync);
-        var transcription = new Dictionary<string,object> { ["model"] = settings.SourceLanguage=="auto" ? "gpt-transcribe" : "gpt-live-transcribe", ["prompt"]=settings.Topic, ["keywords"]=settings.Keywords };
-        if(settings.SourceLanguage!="auto") { transcription["languages"]=new[]{settings.SourceLanguage}; transcription["delay"]="low"; }
+        var transcription = new Dictionary<string,object> { ["model"] = Model, ["delay"]="low", ["prompt"]=settings.Topic, ["keywords"]=settings.Keywords };
+        if(settings.SourceLanguage!="auto")transcription["languages"]=new[]{settings.SourceLanguage};
         await Send(new { type="session.update",session=new { type="transcription",audio=new { input=new { format=new { type="audio/pcm",rate=24000 },transcription,turn_detection=(object?)null } } } },timeout.Token);
         await ready.Task.WaitAsync(timeout.Token);
     }
     public async Task PushAsync(AudioFrame frame,CancellationToken token)
     {
         if(Volatile.Read(ref failure) is { } error)throw new IOException("OpenAI speech recognition connection failed.",error);
+        Volatile.Write(ref end,frame.End);
         bool voice=frame.Peak>=.008f;
         if(!active)
         {
@@ -57,7 +66,7 @@ public sealed class CloudTranscriber : ITranscriber
             foreach(var f in preroll) await Append(f,token); preroll.Clear();
         }
         else await Append(frame,token);
-        end=frame.End; if(voice) lastVoice=end;
+        if(voice) lastVoice=end;
         if(end-lastVoice>=settings.Segmentation.Silence || end-start>=settings.Segmentation.Maximum) await Commit(token);
     }
     private async Task Append(AudioFrame frame,CancellationToken token)
@@ -99,12 +108,14 @@ public sealed class CloudTranscriber : ITranscriber
                 else if(type=="conversation.item.input_audio_transcription.delta")
                 {
                     var id=e.GetProperty("item_id").GetString()!; drafts.TryGetValue(id,out var text); drafts[id]=text+e.GetProperty("delta").GetString();
-                    if(settings.StreamingPreview)Partial?.Invoke(new(drafts[id],items.TryGetValue(id,out var span)?span.End:end));
+                    if(settings.StreamingPreview)Partial?.Invoke(new(drafts[id],items.TryGetValue(id,out var span)?span.End:commits.TryPeek(out var queued)?queued.End:Volatile.Read(ref end)));
                 }
                 else if(type=="conversation.item.input_audio_transcription.completed")
                 {
                     var id=e.GetProperty("item_id").GetString()!; if(!items.Remove(id,out var span))throw new IOException("전사 결과 불일치"); drafts.Remove(id);
-                    completed[span.Id]=new(span.Id,id,span.Start,span.End,e.GetProperty("transcript").GetString()??"");
+                    var text=e.GetProperty("transcript").GetString()??"";
+                    if(settings.StreamingPreview&&!string.IsNullOrWhiteSpace(text))Partial?.Invoke(new(text,span.End));
+                    completed[span.Id]=new(span.Id,id,span.Start,span.End,text);
                     while(completed.Remove(nextComplete,out var caption)) { nextComplete++; if(!string.IsNullOrWhiteSpace(caption.Original))Completed?.Invoke(caption); }
                     if(e.TryGetProperty("languages",out var languages))LanguagesDetected?.Invoke(languages.EnumerateArray().Select(l=>l.GetProperty("code").GetString()!).ToArray());
                     Interlocked.Decrement(ref pending);

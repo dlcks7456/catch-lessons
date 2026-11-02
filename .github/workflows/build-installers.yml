@@ -27,7 +27,7 @@ jobs:
       - name: Run packaged Windows diagnostics
         shell: pwsh
         run: |
-          foreach ($mode in @('--api-translation-test','--api-caption-flow-test','--feature-test','--quality-test','--summary-test','--local-test')) {
+          foreach ($mode in @('--api-translation-test','--api-caption-flow-test','--cloud-transcriber-test','--feature-test','--quality-test','--summary-test','--local-test')) {
             $result=Join-Path $PWD ('artifacts/release-'+$mode.Substring(2)+'.json')
             $app=Start-Process -FilePath 'artifacts/installer-app/CatchLessons.exe' -ArgumentList $mode,$result -WindowStyle Hidden -PassThru -Wait
             Get-Content -LiteralPath $result

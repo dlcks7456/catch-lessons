@@ -262,7 +262,7 @@ public sealed class SettingsWindow : Window
         var pace = Choice(recordingPage, new[] { new { Id = "fast", Name = UiText.T("빠르게") }, new { Id = "balanced", Name = UiText.T("균형 (권장)") }, new { Id = "context", Name = UiText.T("문맥 우선") } }, "Name", "Id", current.CaptionPace);
         var streaming = new CheckBox { Content = UiText.T("자막 미리보기"), IsChecked = current.StreamingPreview };
         recordingPage.Children.Add(streaming);
-        Label(recordingPage, UiText.T("미리보기"), UiText.T("약 2초부터 원문을 주기적으로 갱신합니다. 확정 전 문장은 바뀔 수 있습니다. PC가 느리면 이 기능을 끌 수 있습니다."));
+        Label(recordingPage, UiText.T("미리보기"), UiText.T("로컬 Whisper는 약 2초부터 원문을 갱신합니다. OpenAI API는 수신한 실시간 원문을 바로 표시합니다. 확정 전 문장은 바뀔 수 있습니다."));
         var previewHelp=new StackPanel();recordingPage.Children.Add(previewHelp);
         Label(previewHelp,"OpenAI API",UiText.T("API 번역은 불완전한 문장마다 최대 1회 추가 요청으로 임시 번역을 표시합니다. 끄면 확정 번역만 요청합니다."));
         void ShowPreviewHelp()=>previewHelp.Visibility=translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed;

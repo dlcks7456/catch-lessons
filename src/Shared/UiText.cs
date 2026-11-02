@@ -5,6 +5,8 @@ public static class UiText
     public static string Language {get;set;}="en";
     private static readonly Dictionary<string,string> English = new(StringComparer.Ordinal)
     {
+        ["실시간 자동 인식"]="Live · auto language",
+        ["로컬 Whisper는 약 2초부터 원문을 갱신합니다. OpenAI API는 수신한 실시간 원문을 바로 표시합니다. 확정 전 문장은 바뀔 수 있습니다."]="Local Whisper updates the source preview from about two seconds. OpenAI API displays live transcript updates as they arrive. Provisional text may change.",
         ["지침"]="Instructions",["공통 API Key 관리"]="Manage shared API key",["공통 OpenAI API Key"]="Shared OpenAI API key",
         ["번역 미리보기 · 확정 전이라 바뀔 수 있습니다"]="Translation preview · may change before finalization",
         ["자막 미리보기"]="Caption previews",

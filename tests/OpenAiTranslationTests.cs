@@ -49,7 +49,7 @@ internal static class OpenAiTranslationTests
         settings.TranslationProvider = "openai";
         Check(settings.ApiTranslation && settings.Segmentation == (1.2, 12), "API translation preserves Whisper audio context");
         settings.SpeechEngine="openai";
-        Check(settings.Segmentation==(.6,3),"Streaming ASR uses shorter API translation segments");
+        Check(settings.Segmentation==(1.2,12),"Live ASR keeps natural finalization boundaries independently of its draft stream");
         settings.SpeechEngine="whisper";
         settings.TranscriptionOnly = true;
         Check(!settings.ApiTranslation && settings.Segmentation == (1.2, 12), "Transcription-only segmentation remains unchanged");
