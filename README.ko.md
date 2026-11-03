@@ -32,13 +32,13 @@ API 음성 인식은 자동·고정 언어 모두 `gpt-live-transcribe`와 low �
 
 ## 📦 다운로드 및 설치
 
-현재 소스 버전은 **1.4.0**이며 연결 설정 재구성·공통 API 키 다이얼로그·임시 API 번역 미리보기가 추가됐습니다. 공개 배포 버전과 아래 설치 파일은 새 릴리스 전까지 **1.2.0**입니다. 기존 앱에서 **설정 → 업데이트 확인 → 업데이트**로 설치할 수 있습니다. 설치 파일 체크섬은 [릴리스 첨부 파일](https://github.com/dlcks7456/catch-lessons/releases/tag/v1.2.0)에서 확인할 수 있습니다.
+CatchLessons **1.4.0**은 음성 인식 중에도 임시 번역을 갱신합니다. 기존 앱에서 **설정 → 업데이트 확인 → 업데이트**로 설치할 수 있습니다. 설치 파일 체크섬은 [릴리스 첨부 파일](https://github.com/dlcks7456/catch-lessons/releases/tag/v1.4.0)에서 확인할 수 있습니다.
 
 | 플랫폼 | 설치 파일 | 상태 |
 | --- | --- | --- |
-| Windows x64 | [설치 파일 다운로드 (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-Windows-x64-1.2.0.exe) | 설치 마법사 제공, Windows 설정에서 제거 가능 |
-| macOS 14+ · Apple Silicon | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-macOS-arm64-1.2.0.pkg) | 시험판, 실기기 설치 미검증 |
-| macOS 14+ · Intel | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-macOS-x64-1.2.0.pkg) | 시험판, 실기기 설치 미검증 |
+| Windows x64 | [설치 파일 다운로드 (.exe)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.4.0/CatchLessons-Windows-x64-1.4.0.exe) | 설치 마법사 제공, Windows 설정에서 제거 가능 |
+| macOS 14+ · Apple Silicon | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.4.0/CatchLessons-macOS-arm64-1.4.0.pkg) | 시험판, 실기기 설치 미검증 |
+| macOS 14+ · Intel | [설치 파일 다운로드 (.pkg)](https://github.com/dlcks7456/catch-lessons/releases/download/v1.4.0/CatchLessons-macOS-x64-1.4.0.pkg) | 시험판, 실기기 설치 미검증 |
 
 다운로드한 설치 파일을 실행하고 안내에 따라 설치하세요. Agent 기능에는 Codex CLI 또는 Claude Code의 별도 설치 및 로그인이 필요합니다. Windows에서는 **설정 → 앱 → 설치된 앱 → CatchLessons → 제거**로 삭제할 수 있으며 녹음과 설정은 유지됩니다.
 

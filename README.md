@@ -32,13 +32,13 @@ After stopping, the captions remain visible and can be summarized again until a 
 
 ## 📦 Download and install
 
-The source version is **1.4.0** with reorganized connection settings, a shared API-key dialog and provisional API translation previews. The current published release is **1.2.0**; the installer links below remain 1.2.0 until a new release is published. Existing installations can use **Settings → Check for updates → Update**. Installer checksums are available in the [release assets](https://github.com/dlcks7456/catch-lessons/releases/tag/v1.2.0).
+CatchLessons **1.4.0** adds translation previews that refresh while speech recognition is still running. Existing installations can use **Settings → Check for updates → Update**. Installer checksums are available in the [release assets](https://github.com/dlcks7456/catch-lessons/releases/tag/v1.4.0).
 
 | Platform | Installer | Status |
 | --- | --- | --- |
-| Windows x64 | [Download .exe](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-Windows-x64-1.2.0.exe) | Installation wizard; uninstall via Windows Settings |
-| macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-macOS-arm64-1.2.0.pkg) | Experimental; real-device installation untested |
-| macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.2.0/CatchLessons-macOS-x64-1.2.0.pkg) | Experimental; real-device installation untested |
+| Windows x64 | [Download .exe](https://github.com/dlcks7456/catch-lessons/releases/download/v1.4.0/CatchLessons-Windows-x64-1.4.0.exe) | Installation wizard; uninstall via Windows Settings |
+| macOS 14+ · Apple Silicon | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.4.0/CatchLessons-macOS-arm64-1.4.0.pkg) | Experimental; real-device installation untested |
+| macOS 14+ · Intel | [Download .pkg](https://github.com/dlcks7456/catch-lessons/releases/download/v1.4.0/CatchLessons-macOS-x64-1.4.0.pkg) | Experimental; real-device installation untested |
 
 Open the downloaded installer and follow its instructions. Agent features require Codex CLI or Claude Code to be installed and signed in separately. On Windows, uninstall via **Settings → Apps → Installed apps → CatchLessons**; recordings and settings are retained.
 
