@@ -93,12 +93,11 @@ public sealed class SettingsWindow : Window
         Label(connection,"번역 Provider");
         var translationProvider=Choice(connection,new[]{new{Id="agent",Name="Agent"},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.TranslationProvider);
         translationProvider.Name="TranslationProvider";
-        string apiKey="";bool keyLoaded=true,apiDialogOpen=false,revertingApi=false,keySaveFailed=false,showAgentConfiguration=false;Func<bool>? apiKeySaved=null;
+        string apiKey="";bool keyLoaded=true,apiDialogOpen=false,revertingApi=false,showAgentConfiguration=false;Func<bool>? apiKeySaved=null;
         try{apiKey=current.GetKey();}catch{keyLoaded=false;}
         bool EditApiKey()
         {
             if(apiDialogOpen)return false;
-            keySaveFailed=false;
             apiDialogOpen=true;
             var previousKey=apiKey;var previousLoaded=keyLoaded;var previousProtected=Value.ProtectedKey;
             try
@@ -109,32 +108,31 @@ public sealed class SettingsWindow : Window
             }
             finally{apiDialogOpen=false;}
             if(apiKeySaved?.Invoke()!=false)return true;
-            apiKey=previousKey;keyLoaded=previousLoaded;Value.ProtectedKey=previousProtected;keySaveFailed=true;return false;
+            apiKey=previousKey;keyLoaded=previousLoaded;Value.ProtectedKey=previousProtected;return false;
         }
-        Button KeyRow(Panel panel,ComboBox picker,string name)
+        void KeyRow(Panel panel,ComboBox picker,string name)
         {
             var at=panel.Children.IndexOf(picker);var margin=picker.Margin;panel.Children.Remove(picker);
             var row=new Grid{Name=picker.Name+"Row",Margin=margin};row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
             picker.Margin=new Thickness(0,0,8,0);row.Children.Add(picker);
             var button=IconButton("key",UiText.T("공통 API Key 관리"));button.Name=name;button.Width=button.Height=36;button.Margin=new Thickness(0);
             button.ToolTip=UiText.T("공통 API Key 관리");System.Windows.Automation.AutomationProperties.SetName(button,UiText.T("공통 API Key 관리"));
-            Grid.SetColumn(button,1);row.Children.Add(button);panel.Children.Insert(at,row);button.Click+=(_,_)=>EditApiKey();return button;
+            Grid.SetColumn(button,1);row.Children.Add(button);panel.Children.Insert(at,row);button.Click+=(_,_)=>EditApiKey();
         }
-        void ApiSelection(ComboBox picker,Button button)
+        void ApiSelection(ComboBox picker)
         {
             var previous=picker.SelectedValue as string;
             picker.SelectionChanged+=(_,_)=>
             {
                 if(revertingApi)return;
-                if(IsLoaded&&IsVisible&&picker.SelectedValue as string=="openai")
+                if(IsLoaded&&IsVisible&&picker.SelectedValue as string=="openai"&&string.IsNullOrWhiteSpace(apiKey)&&!EditApiKey())
                 {
-                    var hadKey=!string.IsNullOrWhiteSpace(apiKey);
-                    if(!EditApiKey()&&(!hadKey||keySaveFailed)){revertingApi=true;picker.SelectedValue=previous;revertingApi=false;}
+                    revertingApi=true;picker.SelectedValue=previous;revertingApi=false;
                 }
                 previous=picker.SelectedValue as string;
             };
         }
-        var translationKey=KeyRow(connection,translationProvider,"TranslationApiKey");
+        KeyRow(connection,translationProvider,"TranslationApiKey");
         var keyHint=new TextBlock{Text=UiText.T("API Key는 음성 인식·번역·요약에서 공유합니다. 오른쪽 키 버튼에서 관리하세요."),TextWrapping=TextWrapping.Wrap,FontSize=12,Margin=new Thickness(0,0,0,12)};
         keyHint.SetResourceReference(TextBlock.ForegroundProperty,"Muted");connection.Children.Add(keyHint);
         connection.Name="ConnectionSettings";
@@ -176,7 +174,7 @@ public sealed class SettingsWindow : Window
         var engineOptions=LocalModels.WhisperEnabled?new[] { new {Id="whisper",Name=UiText.T("로컬 Whisper (무료)")},new {Id="openai",Name="OpenAI API"} }:new[]{new{Id="openai",Name="OpenAI API"}};
         var engine = Choice(connection,engineOptions,"Name","Id",LocalModels.WhisperEnabled?current.SpeechEngine:"openai");
         engine.Name="SpeechEngine";
-        var speechKey=KeyRow(connection,engine,"SpeechApiKey");
+        KeyRow(connection,engine,"SpeechApiKey");
         var localPanel = new StackPanel(); connection.Children.Add(localPanel);
         Label(localPanel, UiText.T("로컬 음성 모델"), UiText.T("첫 시작에 모델을 내려받아 PC에 보관합니다. 음성 인식과 언어 감지에는 API 키나 사용 요금이 없습니다."));
         var localModel = Choice(localPanel, LocalModels.Choices, "DisplayName", "Id", LocalModels.Resolve(current.LocalModel).Id);
@@ -186,7 +184,7 @@ public sealed class SettingsWindow : Window
         void EngineChanged() { localPanel.Visibility=engine.SelectedValue as string=="openai"?Visibility.Collapsed:Visibility.Visible; }
         engine.SelectionChanged += (_,_)=>EngineChanged(); EngineChanged();
         translationProvider.SelectionChanged+=(_,_)=>{showAgentConfiguration=false;ShowAgentOptions();};
-        ApiSelection(translationProvider,translationKey);ApiSelection(engine,speechKey);
+        ApiSelection(translationProvider);ApiSelection(engine);
         TextBox ExecutablePath(Panel panel,string title,string path,string provider)
         {
             Label(panel,title);
@@ -293,7 +291,7 @@ public sealed class SettingsWindow : Window
         Label(summaryPage,"요약 Provider","API 요약은 연결 탭의 공통 API Key를 사용합니다. 후속 작업은 선택한 Agent가 실행합니다.");
         summaryProvider=Choice(summaryPage,new[]{new{Id="agent",Name=UiText.T("선택한 Agent")},new{Id="openai",Name="OpenAI API"}},"Name","Id",current.SummaryProvider);
         summaryProvider.Name="SummaryProvider";
-        var summaryKey=KeyRow(summaryPage,summaryProvider,"SummaryApiKey");ApiSelection(summaryProvider,summaryKey);
+        KeyRow(summaryPage,summaryProvider,"SummaryApiKey");ApiSelection(summaryProvider);
         var summaryAgent=new Button{Content=UiText.T("Agent 설정"),HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,8)};summaryPage.Children.Add(summaryAgent);
         void ShowSummaryAgent()=>summaryAgent.Visibility=summaryProvider.SelectedValue as string=="agent"&&translationProvider.SelectedValue as string=="openai"?Visibility.Visible:Visibility.Collapsed;
         summaryProvider.SelectionChanged+=(_,_)=>ShowSummaryAgent();translationProvider.SelectionChanged+=(_,_)=>ShowSummaryAgent();ShowSummaryAgent();summaryAgent.Click+=(_,_)=>OpenAgentConfiguration();
@@ -435,11 +433,11 @@ public sealed class SettingsWindow : Window
         AddHandler(ToggleButton.UncheckedEvent,new RoutedEventHandler((_,e)=>{if(IsSettingInput(e.OriginalSource))Schedule();}));
         AddHandler(Keyboard.LostKeyboardFocusEvent,new KeyboardFocusChangedEventHandler((_,e)=>
         {
-            if(!interactive||!saveGate.HasTextEdits||e.OriginalSource is not (TextBox or PasswordBox))return;
+            if(!interactive||apiDialogOpen||!saveGate.HasTextEdits||e.OriginalSource is not (TextBox or PasswordBox))return;
             autosave.Stop();
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,new Action(()=>
             {
-                if(!interactive||!saveGate.HasTextEdits)return;
+                if(!interactive||apiDialogOpen||!saveGate.HasTextEdits)return;
                 if(HasOpenDropdown((DependencyObject)Content)){Schedule();return;}
                 if(Persist(false))saveGate.Saved();
             }));

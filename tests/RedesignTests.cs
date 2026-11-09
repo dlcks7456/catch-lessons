@@ -84,9 +84,12 @@ internal static class RedesignTests
             var apiLayout=(Grid)((Border)apiSettings.Content).Child;
             apiLayout.Children.OfType<TabControl>().Single().SelectedIndex=1;
             Render((FrameworkElement)apiSettings.Content,700,apiSettings.Height,$"artifacts/settings-{mode}-api.png");apiSettings.Close();
-            var keyDialog=new ApiKeyWindow(new Settings(),"");
+            var keyDialog=new ApiKeyWindow(new Settings(),"test-key");
             var keyContent=(FrameworkElement)keyDialog.Content;keyContent.Measure(new Size(460,double.PositiveInfinity));
-            Render(keyContent,460,Math.Ceiling(keyContent.DesiredSize.Height),$"artifacts/settings-{mode}-key.png");keyDialog.Close();
+            Render(keyContent,460,Math.Ceiling(keyContent.DesiredSize.Height),$"artifacts/settings-{mode}-key.png");
+            var keyHost=(ScrollViewer)keyDialog.KeyInput.Template.FindName("PART_ContentHost",keyDialog.KeyInput);
+            Check(keyHost.ViewportHeight>=keyHost.ExtentHeight,"The masked API key fits vertically inside the input");
+            keyDialog.Close();
         }
         return Task.FromResult(JsonSerializer.Serialize(new { passed = checks, cloudRequests = 0, liveUiActions = 0, renderedThemes = 2 }));
     }

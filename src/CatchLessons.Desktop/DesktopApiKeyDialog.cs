@@ -22,7 +22,9 @@ internal sealed class DesktopApiKeyDialog : Window
         var root=new StackPanel{Margin=new Thickness(24),Spacing=6};Content=root;
         Ui.Label(root,UiText.T("공통 OpenAI API Key"));
         root.Children.Add(new TextBlock{Text=UiText.T("음성 인식·번역·요약에서 같은 키를 사용합니다. API 사용 요금은 별도입니다."),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,8)});
-        key=Ui.Input(initialKey);key.PasswordChar='●';root.Children.Add(key);
+        key=new TextBox{Text=initialKey,PasswordChar='●',MinHeight=36,VerticalContentAlignment=VerticalAlignment.Center};
+        Avalonia.Automation.AutomationProperties.SetName(key,Title);
+        root.Children.Add(key);
         status=new TextBlock{Text=keyReadError?UiText.T("저장된 API Key를 읽지 못했습니다. 새 키를 입력하고 저장하세요."):"",TextWrapping=TextWrapping.Wrap,MinHeight=32,MaxHeight=72,TextTrimming=TextTrimming.CharacterEllipsis};root.Children.Add(status);
         check=Ui.Button(UiText.T("OpenAI API 연결 확인"),Check);check.HorizontalAlignment=HorizontalAlignment.Left;root.Children.Add(check);
         var actions=new StackPanel{Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right,Margin=new Thickness(0,10,0,0)};

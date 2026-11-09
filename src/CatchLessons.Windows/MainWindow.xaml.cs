@@ -91,27 +91,39 @@ public partial class MainWindow : Window
     {
         connectionCheck?.Cancel();using var cancel=new CancellationTokenSource();connectionCheck=cancel;
         var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
-        if (!snapshot.RequiresAgentForCapture)
+        bool api=!snapshot.RequiresAgentForCapture;
+        bool claude=!api&&snapshot.AgentProvider=="claude";
+        var name=api?"OpenAI API":claude?"Claude":"ChatGPT";
+        ConnectionIcon.Data=(System.Windows.Media.Geometry)FindResource(claude?"Icon-brand-claude":"Icon-brand-openai");
+        ConnectionIcon.Visibility=Visibility.Visible;
+        agentConnected=false;
+        AgentConnectionText.Text=name+" · "+UiText.T("연결 확인 중…");
+        AgentConnectionText.ToolTip=null;
+        ShowAgentWarnings([]);
+        if(session==null&&!busy)StartButton.IsEnabled=false;
+        try
         {
-            agentConnected=false; ShowAgentWarnings([]); AgentConnectionText.Text="OpenAI API · "+UiText.T("연결 확인 중…");
-            if(session==null&&!busy)StartButton.IsEnabled=false;
-            try { await OpenAiTranslator.CheckConnectionAsync(snapshot,cancel.Token); if(connectionCheck==cancel){agentConnected=true;AgentConnectionText.Text="OpenAI API · "+UiText.T("연결됨");AgentConnectionText.ToolTip=null;} }
-            catch(Exception ex){if(connectionCheck==cancel){AgentConnectionText.Text="OpenAI API · "+UiText.T("연결 실패");AgentConnectionText.ToolTip=ex.Message;}}
-            finally {if(connectionCheck==cancel){connectionCheck=null;if(session==null&&!busy)StartButton.IsEnabled=agentConnected;}}
-            return;
+            if(api)await OpenAiTranslator.CheckConnectionAsync(snapshot,cancel.Token);
+            else await AgentProbe(snapshot,cancel.Token);
+            if(connectionCheck!=cancel||cancel.IsCancellationRequested)return;
+            agentConnected=true;
+            AgentConnectionText.Text=name+" · "+UiText.T("연결됨");
         }
-        agentConnected=false;AgentConnectionText.Text=UiText.T("Agent 연결 확인 중…");AgentConnectionText.ToolTip=null;ShowAgentWarnings([]);if(session==null&&!busy)StartButton.IsEnabled=false;
-        var failures=new List<string>();
-        async Task Check(string provider)
+        catch(Exception ex)
         {
-            var candidate=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(snapshot))!;candidate.AgentProvider=provider;
-            var name=provider=="claude"?"Claude":"ChatGPT";
-            try{await AgentProbe(candidate,cancel.Token);if(connectionCheck==cancel&&provider==snapshot.AgentProvider){agentConnected=true;AgentConnectionText.Text=name+" "+UiText.T("연결됨");}}
-            catch(Exception ex){if(connectionCheck!=cancel||cancel.IsCancellationRequested)return;failures.Add(name);if(provider==snapshot.AgentProvider){AgentConnectionText.Text=UiText.T("Agent 연결 실패");AgentConnectionText.ToolTip=UiText.Status(ex.Message);}}
-            finally{if(connectionCheck==cancel&&provider==snapshot.AgentProvider&&session==null&&!busy)StartButton.IsEnabled=agentConnected;}
+            if(connectionCheck!=cancel||cancel.IsCancellationRequested)return;
+            AgentConnectionText.Text=name+" · "+UiText.T("연결 실패");
+            AgentConnectionText.ToolTip=UiText.Status(ex.Message);
+            if(!api)ShowAgentWarnings([name]);
         }
-        try{await Task.WhenAll(Check("chatgpt"),Check("claude"));if(connectionCheck==cancel){var selected=snapshot.AgentProvider=="claude"?"Claude":"ChatGPT";ShowAgentWarnings(failures.Where(name=>name==selected));if(agentConnected&&failures.Count>0)AgentConnectionText.Text+=" · "+string.Join(", ",failures)+" "+UiText.T("연결 실패");}}
-        finally{if(connectionCheck==cancel)connectionCheck=null;}
+        finally
+        {
+            if(connectionCheck==cancel)
+            {
+                connectionCheck=null;
+                if(session==null&&!busy)StartButton.IsEnabled=agentConnected;
+            }
+        }
     }
     private void TopicChanged(object sender,System.Windows.Controls.TextChangedEventArgs e){if(TopicPlaceholder!=null)TopicPlaceholder.Visibility=string.IsNullOrEmpty(TopicInput.Text)?Visibility.Visible:Visibility.Collapsed;}
     private void TopicLostFocus(object sender,KeyboardFocusChangedEventArgs e)=>SaveTopic();

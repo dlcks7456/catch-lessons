@@ -35,7 +35,7 @@ internal sealed class DesktopSettings:Window
         var connection=Page(UiText.T("연결"));var connectionTab=pages[^1];var checkLife=new CancellationTokenSource();Closed+=(_,_)=>checkLife.Cancel();
         var apiKeyReadError=false;var apiKeyLoaded=true;var apiKeyDraft="";Button? summaryKey=null;
         try{apiKeyDraft=current.GetKey();}catch{apiKeyLoaded=false;apiKeyReadError=true;}
-        bool keyDialogOpen=false,revertingProvider=false,apiKeySaveFailed=false;ComboBox? summaryProvider=null;
+        bool keyDialogOpen=false,revertingProvider=false;ComboBox? summaryProvider=null;
         Func<Task<bool>> openApiKey=()=>Task.FromResult(false);Func<Task> checkAgent=()=>Task.CompletedTask;Action openAgentSettings=()=>{};
         Button ApiKeyButton(Action action)=>Ui.Icon("key",UiText.T("공통 API Key 관리"),action);
         Grid ProviderRow(Panel parent,ComboBox provider,Button keyButton)
@@ -135,14 +135,14 @@ internal sealed class DesktopSettings:Window
         bool HasApiKey()=>apiKeyLoaded&&!string.IsNullOrWhiteSpace(apiKeyDraft);
         async Task<bool> EditApiKey()
         {
-            if(!IsVisible)return false;
-            apiKeySaveFailed=false;keyDialogOpen=true;timer.Stop();
+            if(!IsVisible||keyDialogOpen)return false;
+            keyDialogOpen=true;timer.Stop();
             try
             {
                 var dialog=new DesktopApiKeyDialog(apiKeyDraft,apiKeyReadError);
                 await dialog.ShowDialog<bool?>(this);
                 if(dialog.SavedKey==null)return false;
-                if(!Save()){apiKeySaveFailed=true;return false;}
+                if(!Save())return false;
                 var previousKey=apiKeyDraft;var previousLoaded=apiKeyLoaded;var previousReadError=apiKeyReadError;var previousProtectedKey=value.ProtectedKey;
                 apiKeyDraft=dialog.SavedKey;apiKeyLoaded=true;apiKeyReadError=false;
                 try
@@ -153,7 +153,7 @@ internal sealed class DesktopSettings:Window
                 catch(Exception ex)
                 {
                     apiKeyDraft=previousKey;apiKeyLoaded=previousLoaded;apiKeyReadError=previousReadError;value.ProtectedKey=previousProtectedKey;
-                    apiKeySaveFailed=true;status.Text=UiText.Status(ex.Message);return false;
+                    status.Text=UiText.Status(ex.Message);return false;
                 }
                 return true;
             }
@@ -162,7 +162,7 @@ internal sealed class DesktopSettings:Window
         async Task<string> ConfirmApiSelection(ComboBox provider,string previous)
         {
             var selected=provider.SelectedItem as string??previous;
-            if(selected=="OpenAI API"&&!await EditApiKey()&&(!HasApiKey()||apiKeySaveFailed))
+            if(selected=="OpenAI API"&&!HasApiKey()&&!await EditApiKey())
             {
                 revertingProvider=true;provider.SelectedItem=previous;revertingProvider=false;return previous;
             }
@@ -216,7 +216,7 @@ internal sealed class DesktopSettings:Window
         bool TextFocused()=>root.GetVisualDescendants().OfType<TextBox>().Any(c=>c.IsKeyboardFocusWithin);
         timer.Tick+=(_,_)=>{if(keyDialogOpen){timer.Stop();return;}if(!SettingsSaveGate.CanRunTimer(TextFocused(),DropdownOpen()))return;timer.Stop();if(Save())saveGate.Saved();};
         AddHandler(TextBox.TextChangedEvent,(_,e)=>{if(!IsVisible||e.Source is not TextBox input)return;if(saveGate.TextChanged(input.IsKeyboardFocusWithin))Schedule();else timer.Stop();});
-        AddHandler(InputElement.LostFocusEvent,(_,e)=>{if(!IsVisible||!saveGate.HasTextEdits||e.Source is not TextBox)return;timer.Stop();Dispatcher.UIThread.Post(()=>{if(!IsVisible||!saveGate.HasTextEdits)return;if(DropdownOpen()){Schedule();return;}if(Save())saveGate.Saved();});});
+        AddHandler(InputElement.LostFocusEvent,(_,e)=>{if(!IsVisible||keyDialogOpen||!saveGate.HasTextEdits||e.Source is not TextBox)return;timer.Stop();Dispatcher.UIThread.Post(()=>{if(!IsVisible||keyDialogOpen||!saveGate.HasTextEdits)return;if(DropdownOpen()){Schedule();return;}if(Save())saveGate.Saved();});});
         AddHandler(SelectingItemsControl.SelectionChangedEvent,(_,_)=>Schedule());
         foreach(var checkbox in new ToggleButton[]{cpu,wav,streaming,enabled,open,fast})checkbox.IsCheckedChanged+=(_,_)=>Schedule();
         Closing+=(_,e)=>{timer.Stop();if(keyDialogOpen){e.Cancel=true;return;}if(IsVisible&&!Save())e.Cancel=true;};

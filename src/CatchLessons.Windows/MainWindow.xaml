@@ -25,7 +25,10 @@
       <DockPanel VerticalAlignment="Center" IsHitTestVisible="False">
        <Image Source="/Assets/app-icon.png" Width="26" Height="26" Margin="0,0,8,0"/>
        <StackPanel VerticalAlignment="Center"><TextBlock Text="CatchLessons" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-        <TextBlock x:Name="AgentConnectionText" Text="연결 확인 대기" FontSize="10" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis"/>
+        <DockPanel>
+         <Path x:Name="ConnectionIcon" Width="12" Height="12" Margin="0,0,4,0" Stretch="Uniform" Fill="{DynamicResource Muted}" Visibility="Collapsed"/>
+         <TextBlock x:Name="AgentConnectionText" Text="연결 확인 대기" FontSize="10" Foreground="{DynamicResource Muted}" TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
        </StackPanel>
       </DockPanel>
      </Border>

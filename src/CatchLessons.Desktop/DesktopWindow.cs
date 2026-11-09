@@ -23,6 +23,7 @@ internal sealed class DesktopWindow:Window
     private readonly ObservableCollection<Caption> rows=[];
     private readonly TextBlock status=new(){FontSize=12,TextWrapping=TextWrapping.Wrap};
     private readonly TextBlock connection=new(){FontSize=10};
+    private readonly PathIcon connectionIcon=new(){Width=12,Height=12,IsVisible=false};
     private readonly TextBlock sessionId=new(){FontSize=10};
     private readonly TextBlock draft=new(){FontSize=16,TextWrapping=TextWrapping.Wrap};
     private readonly TextBlock stage=new(){FontSize=16,TextWrapping=TextWrapping.Wrap};
@@ -61,7 +62,8 @@ internal sealed class DesktopWindow:Window
         actions.Children.Add(Ui.Icon("minus",UiText.T("최소화"),()=>WindowState=WindowState.Minimized));
         actions.Children.Add(Ui.Icon("x",UiText.T("닫기"),Close));
         mode=Ui.Choice(new[]{UiText.T("번역 모드"),UiText.T("녹취 모드")},settings.TranscriptionOnly?UiText.T("녹취 모드"):UiText.T("번역 모드"));mode.Width=110;DockPanel.SetDock(mode,Dock.Right);header.Children.Add(mode);
-        var brand=new StackPanel{VerticalAlignment=VerticalAlignment.Center};brand.Children.Add(new TextBlock{Text="CatchLessons",FontSize=16,FontWeight=FontWeight.SemiBold});brand.Children.Add(connection);header.Children.Add(brand);
+        var brand=new StackPanel{VerticalAlignment=VerticalAlignment.Center};brand.Children.Add(new TextBlock{Text="CatchLessons",FontSize=16,FontWeight=FontWeight.SemiBold});
+        brand.Children.Add(new StackPanel{Orientation=Orientation.Horizontal,Spacing=4,Children={connectionIcon,connection}});header.Children.Add(brand);
         brand.PointerPressed+=(_,e)=>{if(e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)BeginMoveDrag(e);};
         var languages=new Grid{ColumnDefinitions=new ColumnDefinitions("*,24,*,12,*")};Grid.SetRow(languages,1);grid.Children.Add(languages);
         source=Ui.Choice(Languages.Sources,Languages.Source(settings.SourceLanguage));target=Ui.Choice(Languages.All,Languages.Target(settings.TargetLanguage));Grid.SetColumn(target,2);languages.Children.Add(source);languages.Children.Add(target);
@@ -121,16 +123,37 @@ internal sealed class DesktopWindow:Window
     private void ApplyTheme(){Application.Current!.RequestedThemeVariant=settings.Theme switch{"light"=>ThemeVariant.Light,"dark"=>ThemeVariant.Dark,_=>ThemeVariant.Default};shell.Background=Application.Current.ActualThemeVariant==ThemeVariant.Light?Brush.Parse("#F5F7F7"):Brush.Parse("#181D21");progressPanel.Background=Application.Current.ActualThemeVariant==ThemeVariant.Light?Brush.Parse("#E8EEEE"):Brush.Parse("#242B30");}
     private async Task Check()
     {
-        probe?.Cancel();using var cancel=new CancellationTokenSource();probe=cancel;connected=false;connection.Text=UiText.T("연결 확인 중…");agentWarning.IsVisible=false;var failed=new List<string>();var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
-        if(!snapshot.RequiresAgentForCapture)
+        probe?.Cancel();using var cancel=new CancellationTokenSource();probe=cancel;
+        var snapshot=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
+        bool api=!snapshot.RequiresAgentForCapture;
+        bool claude=!api&&snapshot.AgentProvider=="claude";
+        var name=api?"OpenAI API":claude?"Claude":"ChatGPT";
+        connectionIcon.Data=Ui.Symbol(claude?"brand-claude":"brand-openai");
+        connectionIcon.IsVisible=true;
+        connected=false;
+        connection.Text=name+" · "+UiText.T("연결 확인 중…");
+        ToolTip.SetTip(connection,null);
+        agentWarning.IsVisible=false;
+        try
         {
-            try{await OpenAiTranslator.CheckConnectionAsync(snapshot,cancel.Token);if(probe==cancel){connected=true;connection.Text="OpenAI API · "+UiText.T("연결됨");}}
-            catch(Exception ex){if(probe==cancel)connection.Text="OpenAI API · "+ex.Message;}
-            finally{if(probe==cancel)probe=null;}
-            return;
+            if(api)await OpenAiTranslator.CheckConnectionAsync(snapshot,cancel.Token);
+            else await CodexTranslator.CheckConnectionAsync(snapshot,cancel.Token);
+            if(probe!=cancel||cancel.IsCancellationRequested)return;
+            connected=true;
+            connection.Text=name+" · "+UiText.T("연결됨");
         }
-        async Task Test(string provider){var candidate=System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(snapshot))!;candidate.AgentProvider=provider;var name=provider=="claude"?"Claude":"ChatGPT";try{await CodexTranslator.CheckConnectionAsync(candidate,cancel.Token);if(probe==cancel&&provider==snapshot.AgentProvider){connected=true;connection.Text=name+" "+UiText.T("연결됨");}}catch(Exception ex){if(probe!=cancel||cancel.IsCancellationRequested)return;failed.Add(name);if(provider==snapshot.AgentProvider)connection.Text=UiText.T("Agent 연결 실패")+": "+UiText.Status(ex.Message);}}
-        try{await Task.WhenAll(Test("chatgpt"),Test("claude"));if(probe==cancel){var selected=snapshot.AgentProvider=="claude"?"Claude":"ChatGPT";agentWarning.IsVisible=failed.Contains(selected);agentWarningText.Text=UiText.T("연결 확인 필요")+"\n"+selected+" · "+UiText.T("설정에서 해당 Agent의 CLI 경로와 로그인을 확인하세요.");if(connected&&failed.Count>0)connection.Text+=" · "+string.Join(", ",failed)+" "+UiText.T("연결 실패");}}finally{if(probe==cancel)probe=null;}
+        catch(Exception ex)
+        {
+            if(probe!=cancel||cancel.IsCancellationRequested)return;
+            connection.Text=name+" · "+UiText.T("연결 실패");
+            ToolTip.SetTip(connection,UiText.Status(ex.Message));
+            if(!api)
+            {
+                agentWarning.IsVisible=true;
+                agentWarningText.Text=UiText.T("연결 확인 필요")+"\n"+name+" · "+UiText.T("설정에서 해당 Agent의 CLI 경로와 로그인을 확인하세요.");
+            }
+        }
+        finally{if(probe==cancel)probe=null;}
     }
     private void RefreshSessionButton()
     {

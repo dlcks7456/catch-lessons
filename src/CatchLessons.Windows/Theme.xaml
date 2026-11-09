@@ -95,8 +95,8 @@
   <Setter Property="CaretBrush" Value="{DynamicResource Text}"/><Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
   <Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,5,0,16"/><Setter Property="Height" Value="36"/>
   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="PasswordBox">
-   <Border x:Name="Chrome" CornerRadius="10" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" Padding="{TemplateBinding Padding}">
-    <ScrollViewer x:Name="PART_ContentHost"/>
+   <Border x:Name="Chrome" CornerRadius="10" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1">
+    <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
    </Border>
    <ControlTemplate.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger></ControlTemplate.Triggers>
   </ControlTemplate></Setter.Value></Setter>
