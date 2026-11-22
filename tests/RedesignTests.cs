@@ -48,7 +48,11 @@ internal static class RedesignTests
         foreach (string mode in new[] { "dark", "light" })
         {
             var window = new MainWindow(); ThemeManager.Apply(mode); window.SetPreview();
+            UiText.Language = mode == "dark" ? "ko" : "en";
+            WpfLocalizer.Apply(window);
             window.HeaderControls.Visibility = window.StatusControls.Visibility = window.FooterControls.Visibility = Visibility.Visible;
+            window.SessionIdText.Text = UiText.T("세션 ") + "01a20231";
+            window.OpenAgentSessionButton.Visibility = Visibility.Visible;
             Check(window.Icon != null && window.StartButton.Tag is Geometry, "Registered application icon and library glyph");
             Check(Contrast("Text", "Surface") >= 4.5 && Contrast("Muted", "Raised") >= 4.5 && Contrast("AccentInk", "Accent") >= 4.5, "Theme text/button contrast");
             Render((FrameworkElement)window.Content, 920, 460, $"artifacts/redesign-{mode}.png");
@@ -57,6 +61,17 @@ internal static class RedesignTests
             Check(Texts((FrameworkElement)window.Content).Any(t => t == Languages.Auto.Label), "Language picker renders a label, not a record object");
             Render((FrameworkElement)window.Content, 480, 280, $"artifacts/redesign-{mode}-compact.png");
             var content=(FrameworkElement)window.Content;
+            double CenterY(FrameworkElement element) => element.TranslatePoint(new Point(0, element.ActualHeight / 2), content).Y;
+            var sessionButtonY = CenterY(window.OpenAgentSessionButton);
+            Check(new FrameworkElement[]{window.Meter, window.StatusText, window.DetectionText, window.SessionIdText}
+                .All(element => Math.Abs(CenterY(element) - sessionButtonY) < 1), "Status row aligns around the session button center");
+            var sessionButton = window.OpenAgentSessionButton;
+            var sessionChrome = (Border)sessionButton.Template.FindName("Chrome", sessionButton);
+            Check(sessionChrome.BorderThickness == new Thickness(0) && ((FrameworkElement)sessionChrome.Child).ActualWidth == 12 && sessionButton.ActualWidth == 28,
+                "Session button keeps its hit area with a small icon and no border");
+            Check(window.SummaryEnabledToggle.Style == window.FindResource("SummarySwitch") && Texts(content).Contains(UiText.T("요약 실행")), "Footer shows the summary switch and its label");
+            Check(window.SummaryPicker.ActualWidth > 60 && window.SummaryPicker.TranslatePoint(new Point(), content).X >
+                window.OpacitySlider.TranslatePoint(new Point(window.OpacitySlider.ActualWidth, 0), content).X, "Summary picker remains usable at the minimum window width");
             var hoverHeight=window.HistoryScroll.ActualHeight;
             foreach(var controls in new[]{window.HeaderControls,window.StatusControls,window.FooterControls})controls.ClearValue(UIElement.VisibilityProperty);
             Render(content,480,280,$"artifacts/redesign-{mode}-captions-only.png");

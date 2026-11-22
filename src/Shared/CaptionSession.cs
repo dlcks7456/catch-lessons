@@ -4,7 +4,7 @@ using NAudio.Wave;
 
 namespace CatchLessons;
 
-public sealed record ApiTranslationPreview(long Revision, double End, string Text);
+public sealed record ApiTranslationPreview(long Revision, double End, string Text, int TurnId = 0);
 
 public sealed class CaptionSession
 {
@@ -120,11 +120,11 @@ public sealed class CaptionSession
                             lastApiPreview=caption;
                             apiPreviewHasText=false;
                             apiPreviewEnd=caption.End;apiPreviewStarted=Stopwatch.GetTimestamp();revision=++apiPreviewRevision;
-                            TranslationPreview?.Invoke(new(revision,caption.End,apiPreviewText));
+                            TranslationPreview?.Invoke(new(revision,caption.End,apiPreviewText,caption.Id));
                         }
                         apiPreviewTranslator!.ResetPreviewContext(apiTranslator!);
                         await apiPreviewTranslator.TranslateAsync(caption,text=>
-                            PublishApiPreview(revision,request,caption.End,text),request.Token);
+                            PublishApiPreview(revision,request,caption,text),request.Token);
                     }
                     finally{apiRequestGate.Release();}
                     lock(apiPreviewGate)if(queuedApiPreview==null||!HasNewPreviewText(queuedApiPreview))return;
@@ -146,12 +146,12 @@ public sealed class CaptionSession
             }
         });
     }
-    private void PublishApiPreview(long revision,CancellationTokenSource request,double end,string text)
+    private void PublishApiPreview(long revision,CancellationTokenSource request,Caption caption,string text)
     {
         lock(apiPreviewGate)
         {
-            if(apiPreviewRevision!=revision||!ReferenceEquals(apiPreviewCancellation,request)||request.IsCancellationRequested||end<=apiPreviewFinalThrough)return;
-            apiPreviewText=text;apiPreviewHasText=!string.IsNullOrWhiteSpace(text);TranslationPreview?.Invoke(new(revision,end,text));
+            if(apiPreviewRevision!=revision||!ReferenceEquals(apiPreviewCancellation,request)||request.IsCancellationRequested||caption.End<=apiPreviewFinalThrough)return;
+            apiPreviewText=text;apiPreviewHasText=!string.IsNullOrWhiteSpace(text);TranslationPreview?.Invoke(new(revision,caption.End,text,caption.Id));
         }
     }
     private async Task BeginApiFinalTranslationAsync(Caption caption)

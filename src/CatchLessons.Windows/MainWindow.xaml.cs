@@ -8,15 +8,22 @@ using System.Windows.Interop;
 
 namespace CatchLessons;
 
-public sealed class CaptionRow(Caption caption) : INotifyPropertyChanged
+public sealed class CaptionRow(Caption caption, string translationDraft = "") : INotifyPropertyChanged
 {
     public Caption Value { get; private set; } = caption;
     public string Original => Value.Original;
     public FlowDirection SourceDirection => (FlowDirection)Languages.Direction(Value.Original);
     public FlowDirection TranslationDirection => (FlowDirection)Languages.Direction(DisplayKorean);
     public bool IsTranscriptionOnly => Value.State == "transcribed";
-    public string DisplayKorean => IsTranscriptionOnly ? "" : Value.State is "done" or "translating" ? Value.Korean :
-        Value.State == "pending" ? UiText.T("번역 중…") : UiText.T("번역 미완료 · ")+Value.State;
+    public bool IsShowingTranslationDraft => translationDraft.Length > 0 && Value.State is "pending" or "translating";
+    public string DisplayKorean => Value.State switch
+    {
+        "transcribed" => "",
+        "pending" or "translating" when IsShowingTranslationDraft => translationDraft,
+        "done" or "translating" => Value.Korean,
+        "pending" => UiText.T("번역 중…"),
+        _ => UiText.T("번역 미완료 · ") + Value.State,
+    };
     public event PropertyChangedEventHandler? PropertyChanged;
     public void Update(Caption c) { Value = c; PropertyChanged?.Invoke(this, new(null)); }
 }
@@ -44,8 +51,9 @@ public partial class MainWindow : Window
     internal Func<Settings,CancellationToken,Task<string>> AgentProbe=(s,t)=>CodexTranslator.CheckConnectionAsync(s,t);
 
     private bool summarySaved, postStopAttempted;
-    private double latestPreviewEnd, displayedThrough;
-    private double latestTranslationPreviewEnd;
+    private readonly SortedDictionary<int, TranscriptPreview> sourcePreviews = new();
+    private readonly SortedDictionary<int, ApiTranslationPreview> translationPreviews = new();
+    private double displayedThrough;
     private long latestTranslationPreviewRevision;
     private bool loadingLanguages = true;
     private bool loadingTopic=true;
@@ -140,7 +148,6 @@ public partial class MainWindow : Window
         if(!visible)return;
         bool claude=agent!.Provider=="claude";
         OpenAgentSessionButton.IsEnabled=!claude||(!busy&&session==null);
-        OpenAgentSessionButton.Tag=FindResource(claude?"Icon-brand-claude":"Icon-brand-openai");
         OpenAgentSessionButton.Content=UiText.T(claude?(OpenAgentSessionButton.IsEnabled?"Claude Desktop에서 세션 열기":"녹음 중지 후 Claude Desktop에서 세션 열기"):"Codex에서 세션 열기");
     }
     private async void OpenAgentSession(object sender,RoutedEventArgs e)
@@ -200,12 +207,17 @@ public partial class MainWindow : Window
     }
     internal void ApplyPreview(TranscriptPreview preview)
     {
-        if (preview.End <= displayedThrough || preview.End < latestPreviewEnd) return;
-        latestPreviewEnd = preview.End;
+        if (preview.End <= displayedThrough || string.IsNullOrWhiteSpace(preview.Text)) return;
+        if (preview.TurnId == 0 && sourcePreviews.TryGetValue(0, out var previous) && preview.End < previous.End) return;
+        sourcePreviews[preview.TurnId] = preview;
         EmptyText.Visibility = Visibility.Collapsed;
-        PartialText.Text = preview.Text;
-        PartialText.FlowDirection = (FlowDirection)Languages.Direction(preview.Text);
+        RefreshSourcePreview();
         historyFollow.ContentChanged();
+    }
+    private void RefreshSourcePreview()
+    {
+        PartialText.Text = string.Join(Environment.NewLine, sourcePreviews.Values.Select(preview => preview.Text));
+        PartialText.FlowDirection = (FlowDirection)Languages.Direction(PartialText.Text);
     }
     internal void ApplyCaption(Caption caption)
     {
@@ -215,12 +227,17 @@ public partial class MainWindow : Window
         else
         {
             var at = rows.TakeWhile(r => r.Value.Start <= caption.Start).Count();
-            rows.Insert(at, new(caption));
+            var coveredTranslations = translationPreviews.Values.Where(p => p.End <= caption.End || p.TurnId == caption.Id).ToArray();
+            var translationDraft = string.Join(" ", coveredTranslations.Where(p => p.End > caption.Start || p.TurnId == caption.Id).Select(p => p.Text));
+            rows.Insert(at, new(caption, translationDraft));
             displayedThrough = Math.Max(displayedThrough, caption.End);
-            if (caption.End >= latestPreviewEnd) PartialText.Text = "";
+            foreach (var preview in sourcePreviews.Values.Where(p => p.End <= displayedThrough || (p.TurnId > 0 && p.TurnId <= caption.Id)).ToArray())
+                sourcePreviews.Remove(preview.TurnId);
+            RefreshSourcePreview();
+            foreach (var preview in coveredTranslations) translationPreviews.Remove(preview.TurnId);
+            RefreshTranslationPreview();
         }
         // Keep captions while the user is reading earlier lines.
-        if(caption.End>=latestTranslationPreviewEnd){latestTranslationPreviewEnd=caption.End;TranslationPreviewText.Text="";TranslationPreviewLabel.Visibility=Visibility.Collapsed;}
         if (historyFollow.Following)
             while (rows.Count > 500) rows.RemoveAt(0);
         historyFollow.ContentChanged();
@@ -230,11 +247,18 @@ public partial class MainWindow : Window
     {
         if(preview.Revision<latestTranslationPreviewRevision)return;
         latestTranslationPreviewRevision=preview.Revision;
-        if(!string.IsNullOrEmpty(preview.Text)&&(preview.End<=displayedThrough||preview.End<latestTranslationPreviewEnd))return;
-        latestTranslationPreviewEnd=preview.End;
-        TranslationPreviewText.Text=preview.Text;
-        TranslationPreviewText.FlowDirection=(FlowDirection)Languages.Direction(preview.Text);
-        TranslationPreviewLabel.Visibility=string.IsNullOrEmpty(preview.Text)?Visibility.Collapsed:Visibility.Visible;
+        if (string.IsNullOrWhiteSpace(preview.Text) || preview.End <= displayedThrough) return;
+        if (translationPreviews.TryGetValue(preview.TurnId, out var previous) &&
+            (preview.End < previous.End || !preview.Text.StartsWith(previous.Text, StringComparison.Ordinal))) return;
+        translationPreviews[preview.TurnId] = preview;
+        RefreshTranslationPreview();
+        historyFollow.ContentChanged();
+    }
+    private void RefreshTranslationPreview()
+    {
+        TranslationPreviewText.Text = string.Join(Environment.NewLine, translationPreviews.Values.Select(preview => preview.Text));
+        TranslationPreviewText.FlowDirection = (FlowDirection)Languages.Direction(TranslationPreviewText.Text);
+        TranslationPreviewLabel.Visibility = translationPreviews.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
     private void SetMainAction(string icon, string label)
     {
@@ -360,7 +384,10 @@ public partial class MainWindow : Window
         {
             await old.StopAsync();
             await Dispatcher.InvokeAsync(()=>{}, System.Windows.Threading.DispatcherPriority.Background);
-            PartialText.Text = "";
+            sourcePreviews.Clear();
+            RefreshSourcePreview();
+            translationPreviews.Clear();
+            RefreshTranslationPreview();
             Meter.Value = 0;
             session = null;
             lastFolder = old.Folder;
@@ -538,9 +565,12 @@ public partial class MainWindow : Window
         ProcessingPanel.Visibility = Visibility.Collapsed;
         ProcessingProgress.IsIndeterminate = false;
         rows.Clear();
-        latestPreviewEnd = displayedThrough = 0;
-        PartialText.Text = "";
-        latestTranslationPreviewEnd=0;latestTranslationPreviewRevision=0;TranslationPreviewText.Text="";TranslationPreviewLabel.Visibility=Visibility.Collapsed;
+        displayedThrough = 0;
+        sourcePreviews.Clear();
+        RefreshSourcePreview();
+        latestTranslationPreviewRevision = 0;
+        translationPreviews.Clear();
+        RefreshTranslationPreview();
         SessionIdText.Text=""; SessionIdText.Tag=null;OpenAgentSessionButton.CommandParameter=null;OpenAgentSessionButton.Visibility=Visibility.Collapsed;
         Meter.Value = 0;
         RefreshLanguages();

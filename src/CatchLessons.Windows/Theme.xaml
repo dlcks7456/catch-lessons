@@ -45,7 +45,7 @@
   <Setter Property="ToolTip" Value="{Binding Content, RelativeSource={RelativeSource Self}}"/>
   <Setter Property="AutomationProperties.Name" Value="{Binding Content, RelativeSource={RelativeSource Self}}"/>
   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-   <Border x:Name="Chrome" CornerRadius="10" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" Padding="9">
+   <Border x:Name="Chrome" CornerRadius="10" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
     <Path Data="{TemplateBinding Tag}" Fill="{TemplateBinding Foreground}" Stretch="Uniform"/>
    </Border>
    <ControlTemplate.Triggers>

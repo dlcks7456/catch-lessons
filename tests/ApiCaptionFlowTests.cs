@@ -41,6 +41,34 @@ internal static class ApiCaptionFlowTests
         Check(window.History.Items.Count==1&&window.TranslationPreviewText.Text=="이어서 나온 초안","Streaming Caption updates do not advance the API preview revision");
         window.ResetCaptionDisplay();window.ApplyTranslationPreview(new(1,11,"다음 세션 초안"));
         Check(window.History.Items.Count==0&&window.TranslationPreviewText.Text=="다음 세션 초안","A new session accepts its own first preview revision");
+
+        foreach (var state in new[] { "transcribed", "pending" })
+        {
+            window.ResetCaptionDisplay();
+            window.ApplyPreview(new("first draft", 2, 1));
+            window.ApplyPreview(new("second draft", 4, 2));
+            window.ApplyPreview(new("first completed", 2.2, 1));
+            Check(window.PartialText.Text == string.Join(Environment.NewLine, "first completed", "second draft"), "A later turn does not displace the unconfirmed original in either mode");
+            window.ApplyCaption(new(1, "first", 0, 2.2, "first completed", State: state));
+            Check(((CaptionRow)window.History.Items[0]).Original == "first completed" && window.PartialText.Text == "second draft", "Confirmation moves only its own source to history");
+        }
+
+        window.ResetCaptionDisplay();
+        window.ApplyTranslationPreview(new(1, 2, "기존 초안", 1));
+        window.ApplyTranslationPreview(new(2, 2.2, "새", 1));
+        Check(window.TranslationPreviewText.Text == "기존 초안", "A regenerated draft cannot overwrite an already readable prefix");
+        window.ApplyTranslationPreview(new(2, 2.2, "기존 초안에 이어지는 문구", 1));
+        window.ApplyTranslationPreview(new(3, 4, "다음 초안", 2));
+        window.ApplyTranslationPreview(new(4, 4, ""));
+        Check(window.TranslationPreviewText.Text == string.Join(Environment.NewLine, "기존 초안에 이어지는 문구", "다음 초안"), "An extension and a new turn keep readable previews through an empty generation event");
+        var pending = new Caption(1, "first", 0, 2.2, "first completed");
+        window.ApplyCaption(pending);
+        var pendingRow = (CaptionRow)window.History.Items[0];
+        Check(pendingRow.IsShowingTranslationDraft && pendingRow.DisplayKorean == "기존 초안에 이어지는 문구" && window.TranslationPreviewText.Text == "다음 초안", "Pending final translation carries the first preview without clearing the next turn");
+        window.ApplyCaption(pending with { Korean = "처", State = "translating" });
+        Check(pendingRow.DisplayKorean == "기존 초안에 이어지는 문구", "Final stream fragments cannot replace a readable preview");
+        window.ApplyCaption(pending with { Korean = "첫 문장의 확정 번역", State = "done" });
+        Check(!pendingRow.IsShowingTranslationDraft && pendingRow.DisplayKorean == "첫 문장의 확정 번역", "Completed translation replaces the draft in one update");
         window.Close();
 
         var settings=new Settings{TranslationProvider="openai",SpeechEngine="openai"};
