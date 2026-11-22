@@ -16,6 +16,7 @@ internal static class LiveTranslationTests
     private const string Completed="data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n";
     private static void Set(CaptionSession session,string name,object value)=>typeof(CaptionSession).GetField(name,Private)!.SetValue(session,value);
     private static Task Run(CaptionSession session,string method,params object[] args)=>(Task)typeof(CaptionSession).GetMethod(method,Private)!.Invoke(session,args)!;
+    private static void Invoke(CaptionSession session,string method,params object[] args)=>typeof(CaptionSession).GetMethod(method,Private)!.Invoke(session,args);
     private static CaptionSession Session(Settings settings,OpenAiTranslator final,OpenAiTranslator preview,SessionStore store)
     {
         var session=new CaptionSession(settings);Set(session,"apiTranslator",final);Set(session,"apiPreviewTranslator",preview);Set(session,"store",store);return session;
@@ -31,15 +32,16 @@ internal static class LiveTranslationTests
         var store=new SessionStore(root,"ko");var folder=store.Folder;
         var final=new OpenAiTranslator(settings);var session=Session(settings,final,final.CreatePreviewTranslator(),store);
         await using var transcriber=new CloudTranscriber();using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(90));
-        var clock=new Stopwatch();double? firstSource=null,firstTranslation=null;bool beforeCommit=false;string previous="";
-        var generations=new ConcurrentDictionary<long,byte>();
+        var clock=new Stopwatch();double? firstSource=null,firstTranslation=null;bool beforeCommit=false;
+        var preCommitDisplays=new ConcurrentDictionary<string,byte>(StringComparer.Ordinal);
         transcriber.Partial+=p=>{firstSource??=clock.Elapsed.TotalSeconds;session.OnTranscriptPreview(p);};
         transcriber.Completed+=session.OnRawTranscript;
         session.TranslationPreview+=p=>
         {
             if(string.IsNullOrWhiteSpace(p.Text))return;
-            if(firstTranslation==null){firstTranslation=clock.Elapsed.TotalSeconds;beforeCommit=transcriber.CommittedTurns==0;}
-            if(p.Text!=previous){generations.TryAdd(p.Revision,0);previous=p.Text;}
+            var preCommit=transcriber.CommittedTurns==0;
+            if(firstTranslation==null){firstTranslation=clock.Elapsed.TotalSeconds;beforeCommit=preCommit;}
+            if(preCommit)preCommitDisplays.TryAdd(p.Text,0);
         };
         Set(session,"assemblerTask",Run(session,"AssembleAsync"));Set(session,"translatorTask",Run(session,"TranslateLoopAsync"));
         try
@@ -58,45 +60,64 @@ internal static class LiveTranslationTests
         }
         finally{await session.StopAsync();}
         using var saved=SessionStore.OpenExisting(folder);var rows=saved.Read();
-        if(!beforeCommit||generations.Count<2||rows.Count!=1||rows[0].State!="done"||!rows[0].Korean.Any(c=>c>='가'&&c<='힣'))
-            throw new IOException("Expected multiple live translation updates before source commit and one finalized Korean caption.");
-        return JsonSerializer.Serialize(new{passed=true,actualApi=true,firstSourceSeconds=firstSource,firstTranslationSeconds=firstTranslation,translationBeforeSourceCommit=beforeCommit,translationGenerations=generations.Count,finalCaptions=rows.Count,finalTranslation=rows[0].Korean,folder,source="public 11-second speech paced in real time; no user recording or system audio"});
+        if(!beforeCommit||preCommitDisplays.Count<2||rows.Count!=1||rows[0].State!="done"||!rows[0].Korean.Any(c=>c>='가'&&c<='힣'))
+            throw new IOException("Expected at least two distinct translation displays before source commit and one finalized Korean caption.");
+        return JsonSerializer.Serialize(new{passed=true,actualApi=true,firstSourceSeconds=firstSource,firstTranslationSeconds=firstTranslation,translationBeforeSourceCommit=beforeCommit,preCommitTranslationDisplays=preCommitDisplays.Count,finalCaptions=rows.Count,finalTranslation=rows[0].Korean,folder,source="public 11-second speech paced in real time; no user recording or system audio"});
     }
     private sealed record Request(string Json,string Source,long Started);
-    private sealed class Replies(bool blockFirst=false,int firstDelayMilliseconds=0) : HttpMessageHandler
+    private sealed class Replies(int firstDelayMilliseconds=0,string? blockedSource=null,TaskCompletionSource? releaseBlockedSource=null,Func<string,int,string>? translate=null,Task? firstCompletion=null) : HttpMessageHandler
     {
         public readonly ConcurrentQueue<Request> Requests=new();
-        public readonly TaskCompletionSource Canceled=new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int Active,Maximum;
+        public readonly TaskCompletionSource FirstRequestStarted=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource BlockedSourceStarted=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Active,Maximum,MaximumRequests,CanceledRequests;
+        private int requestSequence,inFlight;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken token)
         {
-            if(request.Headers.Authorization?.ToString()!="Bearer test-key")throw new Exception("Shared key missing");
-            var json=await request.Content!.ReadAsStringAsync(token);using var body=JsonDocument.Parse(json);
-            using var input=JsonDocument.Parse(body.RootElement.GetProperty("input").GetString()!);
-            var text=input.RootElement.GetProperty("current").GetString()!;
-            Requests.Enqueue(new(json,text,Stopwatch.GetTimestamp()));int number=Requests.Count;
-            if(number==1&&firstDelayMilliseconds>0)
+            var number=Interlocked.Increment(ref requestSequence);
+            UpdateMaximum(ref MaximumRequests,Interlocked.Increment(ref inFlight));
+            try
             {
-                try{await Task.Delay(firstDelayMilliseconds,token);}catch(OperationCanceledException){Canceled.TrySetResult();throw;}
+                if(request.Headers.Authorization?.ToString()!="Bearer test-key")throw new Exception("Shared key missing");
+                var json=await request.Content!.ReadAsStringAsync(token);using var body=JsonDocument.Parse(json);
+                using var input=JsonDocument.Parse(body.RootElement.GetProperty("input").GetString()!);
+                var text=input.RootElement.GetProperty("current").GetString()!;
+                Requests.Enqueue(new(json,text,Stopwatch.GetTimestamp()));
+                if(number==1)FirstRequestStarted.TrySetResult();
+                if(firstDelayMilliseconds>0&&number==1)await Task.Delay(firstDelayMilliseconds,token);
+                if(text==blockedSource)
+                {
+                    BlockedSourceStarted.TrySetResult();
+                    await releaseBlockedSource!.Task.WaitAsync(token);
+                }
+                var translated=translate?.Invoke(text,number)??(text==FinalSource?"최종 번역":"미리보기 "+number);
+                var sse="data: "+JsonSerializer.Serialize(new{type="response.output_text.delta",delta=translated})+"\n\n";
+                return new(HttpStatusCode.OK){Content=new StreamContent(new ReplyStream(this,Encoding.UTF8.GetBytes(sse+Completed),Encoding.UTF8.GetByteCount(sse),number==1?firstCompletion:null))};
             }
-            var translated=text==FinalSource?"최종 번역":"미리보기 "+number;
-            var sse="data: "+JsonSerializer.Serialize(new{type="response.output_text.delta",delta=translated})+"\n\n";
-            bool blocked=blockFirst&&number==1;
-            return new(HttpStatusCode.OK){Content=new StreamContent(new ReplyStream(this,Encoding.UTF8.GetBytes(sse+(blocked?"":Completed)),blocked))};
+            catch(OperationCanceledException){Interlocked.Increment(ref CanceledRequests);throw;}
+            finally{Interlocked.Decrement(ref inFlight);}
+        }
+        private static void UpdateMaximum(ref int maximum,int value)
+        {
+            int previous;do{previous=Volatile.Read(ref maximum);if(value<=previous)return;}while(Interlocked.CompareExchange(ref maximum,value,previous)!=previous);
         }
         private sealed class ReplyStream : MemoryStream
         {
-            private readonly Replies owner;private readonly bool blocked;private int disposed;
-            public ReplyStream(Replies owner,byte[] bytes,bool blocked):base(bytes)
+            private readonly Replies owner;private int disposed;
+            private readonly int deltaLength;
+            private readonly Task? completion;
+            public ReplyStream(Replies owner,byte[] bytes,int deltaLength,Task? completion):base(bytes)
             {
-                this.owner=owner;this.blocked=blocked;int active=Interlocked.Increment(ref owner.Active);
-                int maximum;do{maximum=Volatile.Read(ref owner.Maximum);if(active<=maximum)break;}while(Interlocked.CompareExchange(ref owner.Maximum,active,maximum)!=maximum);
+                this.deltaLength=deltaLength;this.completion=completion;
+                this.owner=owner;int active=Interlocked.Increment(ref owner.Active);
+                UpdateMaximum(ref owner.Maximum,active);
             }
             public override async ValueTask<int> ReadAsync(Memory<byte> buffer,CancellationToken token=default)
             {
-                if(blocked&&Position>=Length)
+                if (completion != null && !completion.IsCompleted)
                 {
-                    try{await Task.Delay(Timeout.Infinite,token);}catch(OperationCanceledException){owner.Canceled.TrySetResult();throw;}
+                    if (Position < deltaLength) return await base.ReadAsync(buffer[..Math.Min(buffer.Length,deltaLength-(int)Position)],token);
+                    await completion.WaitAsync(token);
                 }
                 return await base.ReadAsync(buffer,token);
             }
@@ -114,6 +135,7 @@ internal static class LiveTranslationTests
         var store=new SessionStore(Path.Combine(Environment.CurrentDirectory,"artifacts","live-translation-tests",Guid.NewGuid().ToString("N")));
         var session=Session(settings,final,preview,store);
         var first=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var second=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var future=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var nextTurn=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const string updatedFuture="A newer utterance follows the confirmed sentence with one more useful detail";
         int sourceEvents=0;session.Partial+=_=>sourceEvents++;
         session.TranslationPreview+=p=>{if(p.Text=="미리보기 1")first.TrySetResult();if(p.Text=="미리보기 2")second.TrySetResult();if(p.Text=="미리보기 3")future.TrySetResult();if(p.Text=="미리보기 5")nextTurn.TrySetResult();};
         try
@@ -137,32 +159,98 @@ internal static class LiveTranslationTests
             Check(history.Count==1,"Repeated interim translations do not enter confirmed context");
             session.OnTranscriptPreview(new("A newer utterance follows the confirmed sentence",8,2));
             await future.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await Run(session,"OnTranscriptAsync",new Caption(1,"first",0,6,FinalSource));
+            Invoke(session,"OnTranscript",new Caption(1,"first",0,6,FinalSource));
             session.OnTranscriptPreview(new("A stale source snapshot must be ignored",5.5,1));
-            await Task.Delay(2100);
-            Check(reply.Requests.Count==3,"Final translation reservation suppresses previews, retains the future utterance and rejects the finalized source");
             var channel=(Channel<Caption>)typeof(CaptionSession).GetField("translations",Private)!.GetValue(session)!;channel.Writer.TryComplete();
-            await Run(session,"TranslateLoopAsync");await nextTurn.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Run(session,"TranslateLoopAsync");
+            Check(reply.Requests.Count==4&&reply.Requests.ToArray()[3].Source==FinalSource,"The completed source is finalized once while a newer live utterance remains eligible");
+            session.OnTranscriptPreview(new(updatedFuture,8.7,2));
+            await nextTurn.Task.WaitAsync(TimeSpan.FromSeconds(5));
             requests=reply.Requests.ToArray();
-            Check(requests[3].Source==FinalSource&&requests[4].Source.StartsWith("A newer utterance",StringComparison.Ordinal),"An older finalized turn preempts but does not discard the newer live utterance");
+            Check(requests[4].Source==updatedFuture,"The completed older turn does not suppress updates for a later live turn");
             using(var body=JsonDocument.Parse(requests[4].Json))using(var input=JsonDocument.Parse(body.RootElement.GetProperty("input").GetString()!))
                 Check(input.RootElement.GetProperty("context").GetArrayLength()==2,"The next live preview receives newly confirmed translation context");
             Check(store.Read().Single().Korean=="최종 번역"&&store.Read().Single().State=="done","Only the final translation is persisted/exported");
-            Check(reply.Maximum==1,"Final and preview requests never overlap");
         }
         finally{await session.StopAsync();}
 
-        var blocked=new Replies(blockFirst:true);var canceledSession=Session(settings,new(settings,"test-key",blocked),new(settings,"test-key",blocked),new SessionStore(Path.Combine(Environment.CurrentDirectory,"artifacts","live-translation-tests",Guid.NewGuid().ToString("N"))));
-        var oldText=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var replacement=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        canceledSession.TranslationPreview+=p=>{if(p.Text=="미리보기 1")oldText.TrySetResult();if(p.Text=="미리보기 2")replacement.TrySetResult();};
+        var releaseFirstCompletion=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var progressive=new Replies(firstCompletion:releaseFirstCompletion.Task,translate:(source,_)=>source switch
+        {
+            "We learned about KB."=>"KB를 배웠습니다.",
+            "It is really easy to use"=>"사용하기 정말 쉽습니다.",
+            _=>"새로운 구절입니다."
+        });
+        var progressiveFinal=new OpenAiTranslator(settings,"test-key",progressive);var progressivePreview=new OpenAiTranslator(settings,"test-key",progressive);
+        ((Queue<Caption>)typeof(OpenAiTranslator).GetField("context",Private)!.GetValue(progressiveFinal)!).Enqueue(new(1,"confirmed",0,1,"Earlier context","확정 문맥"));
+        var progressiveStore=new SessionStore(Path.Combine(Environment.CurrentDirectory,"artifacts","live-translation-tests",Guid.NewGuid().ToString("N")));
+        var progressiveSession=Session(settings,progressiveFinal,progressivePreview,progressiveStore);
+        var firstClause=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var secondClause=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        progressiveSession.TranslationPreview+=p=>
+        {
+            if(p.Text=="KB를 배웠습니다.")firstClause.TrySetResult();
+            if(p.Text=="KB를 배웠습니다."+Environment.NewLine+"사용하기 정말 쉽습니다.")secondClause.TrySetResult();
+        };
         try
         {
-            canceledSession.OnTranscriptPreview(new("The first draft is still being translated",2,1));await oldText.Task.WaitAsync(TimeSpan.FromSeconds(4));
-            await Task.Delay(2100);canceledSession.OnTranscriptPreview(new("The first draft is still being translated with substantially more context",5,1));
-            await replacement.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Check(blocked.Canceled.Task.IsCompleted&&blocked.Requests.Count==2&&blocked.Maximum==1,"Superseding a slow request cancels its stream before starting the newest snapshot");
+            progressiveSession.OnTranscriptPreview(new("We learned about KB. It is really easy to use",2,1));
+            await firstClause.Task.WaitAsync(TimeSpan.FromSeconds(4));
+            Check(progressive.Requests.Count==1&&!releaseFirstCompletion.Task.IsCompleted,"A readable clause appears before the preview response completes");
+            releaseFirstCompletion.TrySetResult();
+            await secondClause.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var requests=progressive.Requests.ToArray();
+            Check(requests.Length==2&&requests[0].Source=="We learned about KB."&&requests[1].Source=="It is really easy to use","Live translation commits a completed phrase and translates the unfinished tail as more words arrive");
+            using(var body=JsonDocument.Parse(requests[1].Json))using(var input=JsonDocument.Parse(body.RootElement.GetProperty("input").GetString()!))
+            {
+                var context=input.RootElement.GetProperty("context");
+                Check(context.GetArrayLength()==2&&context[0].GetProperty("translated").GetString()=="확정 문맥"&&context[1].GetProperty("translated").GetString()=="KB를 배웠습니다.","The next phrase uses both confirmed history and the earlier live translation as context");
+                Check(body.RootElement.GetProperty("instructions").GetString()!.Contains(settings.CustomInstruction),"Clause-based previews preserve the existing Custom Instruction");
+            }
+            Check(progressiveStore.Read().Count==0,"Progressive phrases remain provisional until the source caption is finalized");
         }
-        finally{await canceledSession.StopAsync();}
+        finally{releaseFirstCompletion.TrySetResult();await progressiveSession.StopAsync();}
+
+        var slow=new Replies(firstDelayMilliseconds:2600);var slowSession=Session(settings,new(settings,"test-key",slow),new(settings,"test-key",slow),new SessionStore(Path.Combine(Environment.CurrentDirectory,"artifacts","live-translation-tests",Guid.NewGuid().ToString("N"))));
+        var oldText=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var replacement=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        slowSession.TranslationPreview+=p=>{if(p.Text=="미리보기 1")oldText.TrySetResult();if(p.Text=="미리보기 2")replacement.TrySetResult();};
+        const string newest="The first draft is still being translated with substantially more context";
+        try
+        {
+            slowSession.OnTranscriptPreview(new("The first draft is still being translated",2,1));
+            await slow.FirstRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(4));
+            slowSession.OnTranscriptPreview(new(newest,5,1));
+            Check(!oldText.Task.IsCompleted,"A newer source snapshot arrives while the current request is still working");
+            await oldText.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await replacement.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var requests=slow.Requests.ToArray();
+            Check(slow.CanceledRequests==0&&requests.Length==2&&requests[1].Source==newest&&slow.Maximum==1,"A slow request completes, then the worker translates the newest coalesced snapshot");
+        }
+        finally{await slowSession.StopAsync();}
+
+        var releaseFinal=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var independent=new Replies(blockedSource:FinalSource,releaseBlockedSource:releaseFinal);
+        var independentStore=new SessionStore(Path.Combine(Environment.CurrentDirectory,"artifacts","live-translation-tests",Guid.NewGuid().ToString("N")));
+        var independentSession=Session(settings,new(settings,"test-key",independent),new(settings,"test-key",independent),independentStore);
+        var laterPreview=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        independentSession.TranslationPreview+=p=>{if(p.TurnId==2&&!string.IsNullOrWhiteSpace(p.Text))laterPreview.TrySetResult();};
+        Invoke(independentSession,"OnTranscript",new Caption(1,"final",0,6,FinalSource));
+        var independentChannel=(Channel<Caption>)typeof(CaptionSession).GetField("translations",Private)!.GetValue(independentSession)!;
+        independentChannel.Writer.TryComplete();
+        var finalTask=Run(independentSession,"TranslateLoopAsync");
+        try
+        {
+            await independent.BlockedSourceStarted.Task.WaitAsync(TimeSpan.FromSeconds(4));
+            independentSession.OnTranscriptPreview(new("A later sentence keeps translating while an earlier result waits",8,2));
+            await laterPreview.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(independent.MaximumRequests>=2&&independent.Requests.Any(request=>request.Source==FinalSource)&&independent.Requests.Any(request=>request.Source.StartsWith("A later sentence",StringComparison.Ordinal)),"A blocked final translation does not stall previews from the next live turn");
+        }
+        finally
+        {
+            releaseFinal.TrySetResult();
+            await finalTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(independentStore.Read().Single().State=="done","The released final response still persists the completed caption");
+            await independentSession.StopAsync();
+        }
 
         var cold=new Replies(firstDelayMilliseconds:3000);var coldSession=Session(settings,new(settings,"test-key",cold),new(settings,"test-key",cold),new SessionStore(Path.Combine(Environment.CurrentDirectory,"artifacts","live-translation-tests",Guid.NewGuid().ToString("N"))));
         var coldFirst=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var coldNext=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -172,7 +260,7 @@ internal static class LiveTranslationTests
             coldSession.OnTranscriptPreview(new("A cold model is still preparing its first response",2,1));
             await Task.Delay(2150);coldSession.OnTranscriptPreview(new("A cold model is still preparing its first response while more words arrive",5,1));
             await coldFirst.Task.WaitAsync(TimeSpan.FromSeconds(4));await coldNext.Task.WaitAsync(TimeSpan.FromSeconds(4));
-            Check(!cold.Canceled.Task.IsCompleted&&cold.Requests.Count==2,"Slow first-token responses are not repeatedly canceled before any translation can appear");
+            Check(cold.CanceledRequests==0&&cold.Requests.Count==2,"Slow first-token responses are not repeatedly canceled before any translation can appear");
         }
         finally{await coldSession.StopAsync();}
 

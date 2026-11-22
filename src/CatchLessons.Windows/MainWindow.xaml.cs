@@ -19,11 +19,19 @@ public sealed class CaptionRow(Caption caption, string translationDraft = "") : 
     public string DisplayKorean => Value.State switch
     {
         "transcribed" => "",
-        "pending" or "translating" when IsShowingTranslationDraft => translationDraft,
+        "translating" when IsShowingTranslationDraft => ExtendTranslationDraft(),
+        "pending" when IsShowingTranslationDraft => translationDraft,
         "done" or "translating" => Value.Korean,
         "pending" => UiText.T("번역 중…"),
         _ => UiText.T("번역 미완료 · ") + Value.State,
     };
+    private string ExtendTranslationDraft()
+    {
+        var draftPrefix = translationDraft.ReplaceLineEndings(" ");
+        return Value.Korean.StartsWith(draftPrefix, StringComparison.Ordinal)
+            ? translationDraft + Value.Korean[draftPrefix.Length..]
+            : translationDraft;
+    }
     public event PropertyChangedEventHandler? PropertyChanged;
     public void Update(Caption c) { Value = c; PropertyChanged?.Invoke(this, new(null)); }
 }
@@ -54,6 +62,7 @@ public partial class MainWindow : Window
     private readonly SortedDictionary<int, TranscriptPreview> sourcePreviews = new();
     private readonly SortedDictionary<int, ApiTranslationPreview> translationPreviews = new();
     private double displayedThrough;
+    private int displayedTurn;
     private long latestTranslationPreviewRevision;
     private bool loadingLanguages = true;
     private bool loadingTopic=true;
@@ -227,10 +236,11 @@ public partial class MainWindow : Window
         else
         {
             var at = rows.TakeWhile(r => r.Value.Start <= caption.Start).Count();
-            var coveredTranslations = translationPreviews.Values.Where(p => p.End <= caption.End || p.TurnId == caption.Id).ToArray();
-            var translationDraft = string.Join(" ", coveredTranslations.Where(p => p.End > caption.Start || p.TurnId == caption.Id).Select(p => p.Text));
+            var coveredTranslations = translationPreviews.Values.Where(p => p.End <= caption.End || (p.TurnId > 0 && p.TurnId <= caption.Id)).ToArray();
+            var translationDraft = string.Join(Environment.NewLine, coveredTranslations.Where(p => p.End > caption.Start || p.TurnId == caption.Id).Select(p => p.Text));
             rows.Insert(at, new(caption, translationDraft));
             displayedThrough = Math.Max(displayedThrough, caption.End);
+            displayedTurn = Math.Max(displayedTurn, caption.Id);
             foreach (var preview in sourcePreviews.Values.Where(p => p.End <= displayedThrough || (p.TurnId > 0 && p.TurnId <= caption.Id)).ToArray())
                 sourcePreviews.Remove(preview.TurnId);
             RefreshSourcePreview();
@@ -247,9 +257,8 @@ public partial class MainWindow : Window
     {
         if(preview.Revision<latestTranslationPreviewRevision)return;
         latestTranslationPreviewRevision=preview.Revision;
-        if (string.IsNullOrWhiteSpace(preview.Text) || preview.End <= displayedThrough) return;
-        if (translationPreviews.TryGetValue(preview.TurnId, out var previous) &&
-            (preview.End < previous.End || !preview.Text.StartsWith(previous.Text, StringComparison.Ordinal))) return;
+        if (string.IsNullOrWhiteSpace(preview.Text) || preview.End <= displayedThrough ||
+            (preview.TurnId > 0 && preview.TurnId <= displayedTurn)) return;
         translationPreviews[preview.TurnId] = preview;
         RefreshTranslationPreview();
         historyFollow.ContentChanged();
@@ -566,6 +575,7 @@ public partial class MainWindow : Window
         ProcessingProgress.IsIndeterminate = false;
         rows.Clear();
         displayedThrough = 0;
+        displayedTurn = 0;
         sourcePreviews.Clear();
         RefreshSourcePreview();
         latestTranslationPreviewRevision = 0;

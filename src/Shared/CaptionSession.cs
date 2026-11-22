@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using NAudio.Wave;
 
 namespace CatchLessons;
@@ -8,6 +9,13 @@ public sealed record ApiTranslationPreview(long Revision, double End, string Tex
 
 public sealed class CaptionSession
 {
+    private sealed record LiveClause(string SourcePrefix, Caption Translation);
+    private static readonly Regex clauseBoundary = new(
+        """[。！？；।॥]+["'”’)\]」』]*|(?:[!?;؟؛]+|(?<!\d)(?<!\b[A-Za-z])(?<!\b(?:Mr|Ms|Dr|St|Jr|Sr|vs))\.)["'”’)\]」』]*(?=\s|$)""",
+        RegexOptions.IgnoreCase);
+    private static readonly TimeSpan previewSpacing = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan previewTimeout = TimeSpan.FromSeconds(8);
+
     private readonly Settings settings;
     private readonly IAudioCapture capture = AudioPlatform.Create();
     private readonly ITranscriber transcriber;
@@ -22,18 +30,19 @@ public sealed class CaptionSession
     private CodexTranslator? translator;
     private OpenAiTranslator? apiTranslator;
     private OpenAiTranslator? apiPreviewTranslator;
-    private readonly SemaphoreSlim apiRequestGate=new(1,1);
     private readonly object apiPreviewGate=new();
     private CancellationTokenSource? apiPreviewCancellation;
+    private CancellationTokenSource? activePreviewCancellation;
     private Task? apiPreviewTask;
-    private int pendingApiFinalTranslations;
-    private double apiPreviewEnd, apiPreviewFinalThrough;
+    private double apiPreviewFinalThrough;
+    private int apiPreviewFinalTurn;
     private long apiPreviewRevision;
-    private Caption? queuedApiPreview, lastApiPreview;
+    private ApiTranslationPreview? lastPublishedApiPreview;
+    private Caption? queuedApiPreview, lastApiPreview, activeApiPreview;
     private long apiPreviewStarted;
     private bool apiPreviewStopping;
-    private bool apiPreviewHasText;
-    private string apiPreviewText="";
+    private readonly List<LiveClause> liveClauses = new();
+    private int liveClauseTurn;
     public CodexTranslator? Agent => translator;
     public event Action<string>? SessionStarted;
     private readonly Dictionary<int, Caption> pending = new();
@@ -75,118 +84,168 @@ public sealed class CaptionSession
         if(settings.ApiTranslation&&settings.StreamingPreview)
             QueueApiPreview(new(preview.TurnId>0?preview.TurnId:1,"draft",0,preview.End,preview.Text));
     }
-    private bool HasNewPreviewText(Caption caption) => lastApiPreview==null||caption.Id!=lastApiPreview.Id||
-        (!string.Equals(caption.Original,lastApiPreview.Original,StringComparison.Ordinal)&&
-         (!caption.Original.StartsWith(lastApiPreview.Original,StringComparison.Ordinal)||caption.Original.Length-lastApiPreview.Original.Length>=12));
+    private bool IsCovered(Caption caption) => caption.End <= apiPreviewFinalThrough || caption.Id <= apiPreviewFinalTurn;
+    private static bool HasPreviewText(string text) => text.Length >= 20 || (text.Length >= 8 && clauseBoundary.IsMatch(text));
+    private static int CompleteClauseEnd(string text)
+    {
+        var boundaries = clauseBoundary.Matches(text);
+        return boundaries.Count == 0 ? 0 : boundaries[^1].Index + boundaries[^1].Length;
+    }
+    private bool HasNewPreviewText(Caption caption) => lastApiPreview == null || caption.Id != lastApiPreview.Id ||
+        (!string.Equals(caption.Original, lastApiPreview.Original, StringComparison.Ordinal) &&
+         (!caption.Original.StartsWith(lastApiPreview.Original, StringComparison.Ordinal) ||
+          caption.Original.Length - lastApiPreview.Original.Length >= 12 ||
+          clauseBoundary.IsMatch(caption.Original, lastApiPreview.Original.Length)));
+
     private void QueueApiPreview(Caption caption)
     {
-        lock(apiPreviewGate)
+        caption = caption with { Original = caption.Original.Trim() };
+        lock (apiPreviewGate)
         {
-            if(apiPreviewStopping||workStop.IsCancellationRequested||caption.Original.Length<20||caption.End<=apiPreviewFinalThrough||
-               (lastApiPreview!=null&&caption.Id<lastApiPreview.Id)||
-               (queuedApiPreview!=null&&caption.Id<queuedApiPreview.Id))return;
-            queuedApiPreview=caption;
-            // A cold model must emit some text before same-turn updates can supersede it.
-            if(apiPreviewCancellation!=null&&lastApiPreview!=null&&HasNewPreviewText(caption)&&
-               (caption.Id!=lastApiPreview.Id||(apiPreviewHasText&&Stopwatch.GetElapsedTime(apiPreviewStarted).TotalSeconds>=2)))apiPreviewCancellation.Cancel();
+            if (apiPreviewStopping || workStop.IsCancellationRequested || !HasPreviewText(caption.Original) || IsCovered(caption) ||
+                (lastApiPreview != null && caption.Id < lastApiPreview.Id) ||
+                (activeApiPreview != null && caption.Id < activeApiPreview.Id) ||
+                (queuedApiPreview != null && caption.Id < queuedApiPreview.Id)) return;
+            queuedApiPreview = caption;
             StartApiPreviewWorker();
         }
     }
-    // Called under apiPreviewGate: one worker and one replaceable snapshot, never a queue of old drafts.
+
+    // Called under apiPreviewGate. Final requests use their own translator and do not stall this worker.
     private void StartApiPreviewWorker()
     {
-        if(apiPreviewStopping||workStop.IsCancellationRequested||pendingApiFinalTranslations!=0||apiPreviewTask!=null||queuedApiPreview==null||
-           apiTranslator==null||apiPreviewTranslator==null||!HasNewPreviewText(queuedApiPreview))return;
-        var request=CancellationTokenSource.CreateLinkedTokenSource(workStop.Token);apiPreviewCancellation=request;
-        apiPreviewTask=Task.Run(async()=>
+        if (apiPreviewStopping || workStop.IsCancellationRequested || apiPreviewTask != null || queuedApiPreview == null ||
+            apiTranslator is not { } confirmedTranslator || apiPreviewTranslator is not { } previewTranslator || !HasNewPreviewText(queuedApiPreview)) return;
+        var worker = CancellationTokenSource.CreateLinkedTokenSource(workStop.Token);
+        apiPreviewCancellation = worker;
+        apiPreviewTask = Task.Run(async () =>
         {
             try
             {
-                while(true)
+                while (!worker.IsCancellationRequested)
                 {
-                    double delay;
-                    lock(apiPreviewGate)delay=apiPreviewStarted==0?0:2-Stopwatch.GetElapsedTime(apiPreviewStarted).TotalSeconds;
-                    if(delay>0)await Task.Delay(TimeSpan.FromSeconds(delay),request.Token);
-                    await apiRequestGate.WaitAsync(request.Token);
+                    var delay = apiPreviewStarted == 0 ? TimeSpan.Zero : previewSpacing - Stopwatch.GetElapsedTime(apiPreviewStarted);
+                    if (delay > TimeSpan.Zero) await Task.Delay(delay, worker.Token);
+
+                    Caption snapshot;
+                    LiveClause[] prefix;
+                    long revision;
+                    using var request = CancellationTokenSource.CreateLinkedTokenSource(worker.Token);
+                    lock (apiPreviewGate)
+                    {
+                        if (worker.IsCancellationRequested || queuedApiPreview == null || IsCovered(queuedApiPreview) || !HasNewPreviewText(queuedApiPreview)) return;
+                        snapshot = queuedApiPreview;
+                        queuedApiPreview = null;
+                        activeApiPreview = snapshot;
+                        activePreviewCancellation = request;
+                        revision = ++apiPreviewRevision;
+                        prefix = liveClauseTurn == snapshot.Id
+                            ? liveClauses.TakeWhile(clause => snapshot.Original.StartsWith(clause.SourcePrefix, StringComparison.Ordinal)).ToArray()
+                            : [];
+                    }
                     try
                     {
-                        Caption caption;long revision;
-                        lock(apiPreviewGate)
+                        var prefixLength = prefix.Length == 0 ? 0 : prefix[^1].SourcePrefix.Length;
+                        var remaining = snapshot.Original[prefixLength..].TrimStart();
+                        if (!HasPreviewText(remaining)) continue;
+                        // shortcut: punctuation can split uncommon abbreviations, use ASR word timings if it disrupts captions.
+                        var clauseEnd = CompleteClauseEnd(remaining);
+                        var translationInput = snapshot with { Original = clauseEnd > 0 ? remaining[..clauseEnd] : remaining };
+                        var untranslatedTail = clauseEnd > 0 ? remaining[clauseEnd..].TrimStart() : "";
+                        var readablePrefix = string.Join(Environment.NewLine, prefix.Select(clause => clause.Translation.Korean));
+
+                        apiPreviewStarted = Stopwatch.GetTimestamp();
+                        request.CancelAfter(previewTimeout);
+                        previewTranslator.ResetPreviewContext(confirmedTranslator, prefix.Select(clause => clause.Translation));
+                        var text = await previewTranslator.TranslateAsync(translationInput, partial =>
                         {
-                            if(request.IsCancellationRequested||pendingApiFinalTranslations!=0||queuedApiPreview==null||
-                               queuedApiPreview.End<=apiPreviewFinalThrough||!HasNewPreviewText(queuedApiPreview))return;
-                            caption=queuedApiPreview;queuedApiPreview=null;
-                            if(lastApiPreview?.Id!=caption.Id)apiPreviewText="";
-                            lastApiPreview=caption;
-                            apiPreviewHasText=false;
-                            apiPreviewEnd=caption.End;apiPreviewStarted=Stopwatch.GetTimestamp();revision=++apiPreviewRevision;
-                            TranslationPreview?.Invoke(new(revision,caption.End,apiPreviewText,caption.Id));
+                            var readableEnd = CompleteClauseEnd(partial);
+                            if (readableEnd >= 8)
+                                PublishApiPreview(snapshot, revision, readablePrefix, partial[..readableEnd], request.Token, inProgress: true);
+                        }, request.Token);
+                        lock (apiPreviewGate)
+                        {
+                            if (request.IsCancellationRequested || IsCovered(snapshot)) continue;
+                            lastApiPreview = snapshot;
+                            liveClauseTurn = snapshot.Id;
+                            liveClauses.Clear();
+                            liveClauses.AddRange(prefix);
+                            if (clauseEnd > 0)
+                            {
+                                var sourcePrefix = snapshot.Original[..(snapshot.Original.Length - remaining.Length + clauseEnd)];
+                                liveClauses.Add(new(sourcePrefix, translationInput with { Korean = text }));
+                                lastApiPreview = snapshot with { Original = sourcePrefix };
+                                if (HasPreviewText(untranslatedTail))
+                                    queuedApiPreview ??= snapshot;
+                            }
                         }
-                        apiPreviewTranslator!.ResetPreviewContext(apiTranslator!);
-                        await apiPreviewTranslator.TranslateAsync(caption,text=>
-                            PublishApiPreview(revision,request,caption,text),request.Token);
+                        PublishApiPreview(snapshot, revision, readablePrefix, text, request.Token, inProgress: untranslatedTail.Length > 0);
                     }
-                    finally{apiRequestGate.Release();}
-                    lock(apiPreviewGate)if(queuedApiPreview==null||!HasNewPreviewText(queuedApiPreview))return;
+                    catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+                    catch (Exception)
+                    {
+                        // A failed preview leaves the last readable text in place. The final request reports its own errors.
+                    }
+                    finally
+                    {
+                        lock (apiPreviewGate)
+                        {
+                            activeApiPreview = null;
+                            activePreviewCancellation = null;
+                        }
+                    }
                 }
             }
-            catch(OperationCanceledException)when(request.IsCancellationRequested||workStop.IsCancellationRequested){}
-            catch(Exception){}
+            catch (OperationCanceledException) when (worker.IsCancellationRequested) { }
             finally
             {
-                lock(apiPreviewGate)
+                lock (apiPreviewGate)
                 {
-                    if(ReferenceEquals(apiPreviewCancellation,request))
-                    {
-                        apiPreviewCancellation=null;apiPreviewTask=null;
-                        StartApiPreviewWorker();
-                    }
+                    apiPreviewCancellation = null;
+                    apiPreviewTask = null;
+                    StartApiPreviewWorker();
                 }
-                request.Dispose();
+                worker.Dispose();
             }
         });
     }
-    private void PublishApiPreview(long revision,CancellationTokenSource request,Caption caption,string text)
+
+    private void PublishApiPreview(Caption snapshot, long revision, string prefix, string text, CancellationToken token, bool inProgress)
     {
-        lock(apiPreviewGate)
+        var display = prefix.Length == 0 ? text.Trim() : prefix + Environment.NewLine + text.Trim();
+        lock (apiPreviewGate)
         {
-            if(apiPreviewRevision!=revision||!ReferenceEquals(apiPreviewCancellation,request)||request.IsCancellationRequested||caption.End<=apiPreviewFinalThrough)return;
-            apiPreviewText=text;apiPreviewHasText=!string.IsNullOrWhiteSpace(text);TranslationPreview?.Invoke(new(revision,caption.End,text,caption.Id));
+            if (token.IsCancellationRequested || IsCovered(snapshot)) return;
+            if (lastPublishedApiPreview is { } previous && previous.TurnId == snapshot.Id &&
+                (display == previous.Text || (inProgress && display.Length < previous.Text.Length))) return;
+            var update = new ApiTranslationPreview(revision, snapshot.End, display, snapshot.Id);
+            lastPublishedApiPreview = update;
+            TranslationPreview?.Invoke(update);
         }
     }
-    private async Task BeginApiFinalTranslationAsync(Caption caption)
+
+    private void MarkApiPreviewFinal(Caption caption)
     {
-        CancellationTokenSource? request;Task? preview;long revision;double end;
-        lock(apiPreviewGate)
+        lock (apiPreviewGate)
         {
-            pendingApiFinalTranslations++;revision=++apiPreviewRevision;end=apiPreviewEnd;
-            apiPreviewFinalThrough=Math.Max(apiPreviewFinalThrough,caption.End);
-            apiPreviewText="";
-            if(queuedApiPreview?.End<=apiPreviewFinalThrough)queuedApiPreview=null;
-            if(lastApiPreview!=null&&lastApiPreview.End>apiPreviewFinalThrough)
-            {
-                if(queuedApiPreview==null||lastApiPreview.End>queuedApiPreview.End)queuedApiPreview=lastApiPreview;
-                lastApiPreview=null;
-            }
-            request=apiPreviewCancellation;request?.Cancel();apiPreviewCancellation=null;
-            preview=apiPreviewTask;apiPreviewTask=null;
+            apiPreviewFinalThrough = Math.Max(apiPreviewFinalThrough, caption.End);
+            apiPreviewFinalTurn = Math.Max(apiPreviewFinalTurn, caption.Id);
+            if (queuedApiPreview != null && IsCovered(queuedApiPreview)) queuedApiPreview = null;
+            if (activeApiPreview != null && IsCovered(activeApiPreview)) activePreviewCancellation?.Cancel();
         }
-        TranslationPreview?.Invoke(new(revision,Math.Max(caption.End,end),""));
-        if(preview!=null)await preview;
     }
     private async Task StopApiPreviewAsync()
     {
-        CancellationTokenSource? request;Task? preview;long revision;double end;
-        lock(apiPreviewGate)
+        Task? preview;
+        lock (apiPreviewGate)
         {
-            apiPreviewStopping=true;queuedApiPreview=null;apiPreviewText="";
-            request=apiPreviewCancellation;request?.Cancel();apiPreviewCancellation=null;preview=apiPreviewTask;apiPreviewTask=null;
-            revision=++apiPreviewRevision;end=apiPreviewEnd;
+            apiPreviewStopping = true;
+            queuedApiPreview = null;
+            apiPreviewCancellation?.Cancel();
+            preview = apiPreviewTask;
         }
-        TranslationPreview?.Invoke(new(revision,end,""));
-        if(preview!=null)await preview;
+        if (preview != null) await preview;
     }
-    private void CompleteApiFinalTranslation(){lock(apiPreviewGate){pendingApiFinalTranslations--;StartApiPreviewWorker();}}
     public async Task StartAsync(CancellationToken token = default)
     {
         if (settings.ApiTranslation)
@@ -262,7 +321,7 @@ public sealed class CaptionSession
         catch (OperationCanceledException) when (workStop.IsCancellationRequested) { }
         catch (Exception ex) { Failed?.Invoke(ex); }
     }
-    private async Task OnTranscriptAsync(Caption caption)
+    private void OnTranscript(Caption caption)
     {
         if (settings.TranscriptionOnly)
         {
@@ -273,11 +332,10 @@ public sealed class CaptionSession
         }
         store!.Save(caption);
         lock (gate) pending[caption.Id] = caption;
+        if (settings.ApiTranslation) MarkApiPreviewFinal(caption);
         Updated?.Invoke(caption);
-        if(settings.ApiTranslation)await BeginApiFinalTranslationAsync(caption);
         if (!translations.Writer.TryWrite(caption))
         {
-            if(settings.ApiTranslation)CompleteApiFinalTranslation();
             store.Save(caption with { State = "queue_full" });
             Failed?.Invoke(new IOException("번역 대기열이 가득 찼습니다. 원문은 저장했습니다."));
         }
@@ -287,7 +345,7 @@ public sealed class CaptionSession
         try
         {
             var captions=settings.ApiTranslation?CaptionAssembler.ReadAsync(rawTranscripts.Reader,workStop.Token,3.35):CaptionAssembler.ReadAsync(rawTranscripts.Reader,workStop.Token);
-            await foreach (var caption in captions)await OnTranscriptAsync(caption);
+            await foreach (var caption in captions) OnTranscript(caption);
         }
         catch (OperationCanceledException) when (workStop.IsCancellationRequested) { }
         catch (Exception ex) { Failed?.Invoke(ex); }
@@ -304,20 +362,13 @@ public sealed class CaptionSession
                 while (apiTranslator == null && batch.Count < 6 && translations.Reader.TryRead(out var next)) batch.Add(next);
                 batch.Sort((a, b) => a.Start.CompareTo(b.Start));
                 Dictionary<int, string>? translated = null;
-                bool apiRequestQueued=false;
                 try
                 {
                     if (apiTranslator != null)
                     {
-                        apiRequestQueued=true;
-                        await apiRequestGate.WaitAsync(workStop.Token);
-                        try
-                        {
-                            var text = await apiTranslator.TranslateAsync(caption,
-                                text => Updated?.Invoke(caption with { Korean = text, State = "translating" }), workStop.Token);
-                            translated = new() { [caption.Id] = text };
-                        }
-                        finally{apiRequestGate.Release();}
+                        var text = await apiTranslator.TranslateAsync(caption,
+                            text => Updated?.Invoke(caption with { Korean = text, State = "translating" }), workStop.Token);
+                        translated = new() { [caption.Id] = text };
                     }
                     else translated=await translator!.TranslateBatchAsync(batch,[],workStop.Token);
                 }
@@ -327,7 +378,6 @@ public sealed class CaptionSession
                     Status?.Invoke(ex.Message);
                     try{File.AppendAllText(Path.Combine(store!.InternalFolder,"translation-errors.jsonl"),System.Text.Json.JsonSerializer.Serialize(new{time=DateTimeOffset.Now,ids=batch.Select(c=>c.Id),error=ex.Message})+Environment.NewLine);}catch(IOException){}
                 }
-                finally{if(apiRequestQueued)CompleteApiFinalTranslation();}
                 foreach (var c in batch)
                 {
                     var result = translated == null ? c with { State = "failed" } : c with { Korean = translated[c.Id], State = "done" };
@@ -384,7 +434,6 @@ public sealed class CaptionSession
             if (translatorTask != null) await translatorTask;
             apiTranslator?.Dispose();
             apiPreviewTranslator?.Dispose();
-            apiRequestGate.Dispose();
             lock (gate)
                 foreach (var c in pending.Values)
                 {

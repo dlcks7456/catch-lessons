@@ -40,6 +40,7 @@ internal sealed class DesktopWindow:Window
     private double shownThrough,previewEnd;
     private double translationPreviewEnd;
     private long translationPreviewRevision;
+    private int translationPreviewTurn;
     private string sourceDraft="",translationDraft="";
     public bool BackgroundEnabled {get;set;}
     private bool exitRequested;
@@ -180,7 +181,7 @@ internal sealed class DesktopWindow:Window
     private void TogglePause(){if(session==null||!pause.IsEnabled)return;try{session.SetPaused(!session.IsPaused);}catch(Exception ex){status.Text=UiText.Status(ex.Message);return;}pause.Content=new PathIcon{Data=Ui.Symbol(session.IsPaused?"play":"pause")};ToolTip.SetTip(pause,UiText.T(session.IsPaused?"녹음 재개":"일시정지"));status.Text=UiText.T(session.IsPaused?"녹음이 일시정지되었습니다":"시스템 오디오를 듣고 있습니다");}
     private void Progress(string text,bool running=true){stage.Text=UiText.Status(text);progress.IsIndeterminate=running;progressPanel.IsVisible=true;}
     private void Tail(){if(follow&&rows.Count>0)captions.ScrollIntoView(rows[^1]);}
-    private void Clear(){rows.Clear();draft.Text="";sourceDraft=translationDraft="";translationPreviewEnd=0;translationPreviewRevision=0;sessionId.Text="";sessionId.Tag=null;openAgentSession.Tag=null;openAgentSession.IsVisible=false;shownThrough=previewEnd=0;follow=true;}
+    private void Clear(){rows.Clear();draft.Text="";sourceDraft=translationDraft="";translationPreviewEnd=0;translationPreviewRevision=0;translationPreviewTurn=0;sessionId.Text="";sessionId.Tag=null;openAgentSession.Tag=null;openAgentSession.IsVisible=false;shownThrough=previewEnd=0;follow=true;}
     private void UpdateDraft()=>draft.Text=string.Join("\n\n",new[]{string.IsNullOrWhiteSpace(sourceDraft)?"":UiText.T("원문 미리보기 · 인식 중 수정될 수 있습니다")+"\n"+sourceDraft,string.IsNullOrWhiteSpace(translationDraft)?"":UiText.T("번역 미리보기 · 확정 전이라 바뀔 수 있습니다")+"\n"+translationDraft}.Where(text=>text.Length>0));
     private async Task StartStop()
     {
@@ -196,8 +197,30 @@ internal sealed class DesktopWindow:Window
                 current.Status+=s=>Dispatcher.UIThread.Post(()=>{status.Text=UiText.Status(s);if(busy)Progress(UiText.Status(s));});
                 current.SessionStarted+=id=>Dispatcher.UIThread.Post(()=>{if(session!=current)return;sessionId.Tag=id;sessionId.Text=UiText.T("세션 ")+id[..Math.Min(8,id.Length)];ToolTip.SetTip(sessionId,id);openAgentSession.Tag=current.Agent;RefreshSessionButton();});
                 current.Partial+=p=>Dispatcher.UIThread.Post(()=>{if(session!=current||p.End<=shownThrough||p.End<previewEnd)return;previewEnd=p.End;sourceDraft=p.Text;UpdateDraft();});
-                current.TranslationPreview+=p=>Dispatcher.UIThread.Post(()=>{if(session!=current||p.Revision<translationPreviewRevision)return;translationPreviewRevision=p.Revision;if(!string.IsNullOrEmpty(p.Text)&&(p.End<=shownThrough||p.End<translationPreviewEnd))return;translationPreviewEnd=p.End;translationDraft=p.Text;UpdateDraft();});
-                current.Updated+=c=>Dispatcher.UIThread.Post(()=>{if(session!=current)return;int index=rows.ToList().FindIndex(r=>r.Id==c.Id);if(index<0){rows.Add(c);shownThrough=Math.Max(shownThrough,c.End);}else rows[index]=c;if(c.End>=previewEnd)sourceDraft="";if(c.End>=translationPreviewEnd)translationDraft="";UpdateDraft();Tail();});
+                current.TranslationPreview += preview => Dispatcher.UIThread.Post(() =>
+                {
+                    if (session != current || preview.Revision < translationPreviewRevision || preview.End <= shownThrough) return;
+                    translationPreviewRevision = preview.Revision;
+                    translationPreviewEnd = preview.End;
+                    translationPreviewTurn = preview.TurnId;
+                    translationDraft = preview.Text;
+                    UpdateDraft();
+                });
+                current.Updated += caption => Dispatcher.UIThread.Post(() =>
+                {
+                    if (session != current) return;
+                    var index = rows.ToList().FindIndex(row => row.Id == caption.Id);
+                    if (index < 0)
+                    {
+                        rows.Add(caption);
+                        shownThrough = Math.Max(shownThrough, caption.End);
+                        if (caption.End >= previewEnd) sourceDraft = "";
+                        if (caption.Id == translationPreviewTurn || caption.End >= translationPreviewEnd) translationDraft = "";
+                    }
+                    else rows[index] = caption;
+                    UpdateDraft();
+                    Tail();
+                });
                 current.LanguagesDetected+=codes=>Dispatcher.UIThread.Post(()=>status.Text=UiText.T("감지 언어: ")+string.Join(", ",codes));
                 current.Failed+=ex=>Dispatcher.UIThread.Post(async()=>{if(session!=current)return;if(busy){pendingFailure=ex;operation?.Cancel();return;}await StartStop();Progress(ex.Message,false);});
                 Progress(UiText.T("음성 인식 및 새 Agent 세션 준비 중…"));await current.StartAsync(cancel.Token);lastAgent=current.Agent;lastFolder=current.Folder;progressPanel.IsVisible=false;

@@ -54,19 +54,24 @@ internal static class ApiCaptionFlowTests
         }
 
         window.ResetCaptionDisplay();
-        window.ApplyTranslationPreview(new(1, 2, "기존 초안", 1));
-        window.ApplyTranslationPreview(new(2, 2.2, "새", 1));
-        Check(window.TranslationPreviewText.Text == "기존 초안", "A regenerated draft cannot overwrite an already readable prefix");
-        window.ApplyTranslationPreview(new(2, 2.2, "기존 초안에 이어지는 문구", 1));
+        window.ApplyTranslationPreview(new(1, 2, "좋아요, 여러분", 1));
+        const string revised = "여러분, 이번 섹션에서는 많은 것을 배웠습니다.";
+        window.ApplyTranslationPreview(new(2, 2.2, revised, 1));
+        Check(window.TranslationPreviewText.Text == revised, "A completed live update advances even when the old opening phrase was revised");
         window.ApplyTranslationPreview(new(3, 4, "다음 초안", 2));
         window.ApplyTranslationPreview(new(4, 4, ""));
-        Check(window.TranslationPreviewText.Text == string.Join(Environment.NewLine, "기존 초안에 이어지는 문구", "다음 초안"), "An extension and a new turn keep readable previews through an empty generation event");
+        Check(window.TranslationPreviewText.Text == string.Join(Environment.NewLine, revised, "다음 초안"), "A revised preview and a new turn remain readable through an empty update");
         var pending = new Caption(1, "first", 0, 2.2, "first completed");
         window.ApplyCaption(pending);
         var pendingRow = (CaptionRow)window.History.Items[0];
-        Check(pendingRow.IsShowingTranslationDraft && pendingRow.DisplayKorean == "기존 초안에 이어지는 문구" && window.TranslationPreviewText.Text == "다음 초안", "Pending final translation carries the first preview without clearing the next turn");
+        Check(pendingRow.IsShowingTranslationDraft && pendingRow.DisplayKorean == revised && window.TranslationPreviewText.Text == "다음 초안", "Pending final translation carries the first preview without clearing the next turn");
+        window.ApplyTranslationPreview(new(5, 2.4, "늦게 도착한 미리보기", 1));
+        Check(window.TranslationPreviewText.Text == "다음 초안", "A finalized turn cannot reappear if its preview had a later estimated end");
         window.ApplyCaption(pending with { Korean = "처", State = "translating" });
-        Check(pendingRow.DisplayKorean == "기존 초안에 이어지는 문구", "Final stream fragments cannot replace a readable preview");
+        Check(pendingRow.DisplayKorean == revised, "Final stream fragments cannot erase the readable preview");
+        var extended = revised + " 먼저 KB를 살펴봤습니다.";
+        window.ApplyCaption(pending with { Korean = extended, State = "translating" });
+        Check(pendingRow.DisplayKorean == extended, "A final stream can append without clearing the existing draft");
         window.ApplyCaption(pending with { Korean = "첫 문장의 확정 번역", State = "done" });
         Check(!pendingRow.IsShowingTranslationDraft && pendingRow.DisplayKorean == "첫 문장의 확정 번역", "Completed translation replaces the draft in one update");
         window.Close();

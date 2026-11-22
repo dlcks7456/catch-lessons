@@ -41,7 +41,7 @@ public sealed class OpenAiTranslator : IDisposable
         }
     }
 
-    internal void ResetPreviewContext(OpenAiTranslator source)
+    internal void ResetPreviewContext(OpenAiTranslator source, IEnumerable<Caption> liveContext)
     {
         Caption[] confirmed;
         lock(source.contextGate)confirmed=source.context.ToArray();
@@ -49,6 +49,8 @@ public sealed class OpenAiTranslator : IDisposable
         {
             context.Clear();
             foreach(var caption in confirmed)context.Enqueue(caption);
+            foreach (var clause in liveContext) context.Enqueue(clause);
+            TrimContext();
         }
     }
 
@@ -90,9 +92,14 @@ public sealed class OpenAiTranslator : IDisposable
         lock(contextGate)
         {
             context.Enqueue(caption with { Korean = text });
-            while (context.Count > 8 || context.Sum(c => c.Original.Length + c.Korean.Length) > 12000) context.Dequeue();
+            TrimContext();
         }
         return text;
+    }
+
+    private void TrimContext()
+    {
+        while (context.Count > 8 || context.Sum(c => c.Original.Length + c.Korean.Length) > 12000) context.Dequeue();
     }
 
     private async Task<string> RequestAsync(string instructions, string input, Action<string>? preview, CancellationToken token, bool summary = false)
